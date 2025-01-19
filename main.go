@@ -1,36 +1,32 @@
 package main
 
 import (
-	"archive/zip"
-	"encoding/xml"
+	"encoding/json"
 	"log"
 	"os"
 )
 
-type Eur struct {
-	XmlName  xml.Name  `xml:"eur"`
-	Name     string    `xml:"general>name"`
-	Address  string    `xml:"general>address"`
-	Company  string    `xml:"general>company"`
-	TaxID    string    `xml:"general>taxid"`
-	Start    Date      `xml:"general>businessyearrange>daterange>start>date"`
-	Receipts []Receipt `xml:"receipts>receipt"`
+const configName = "config.json"
+
+type Config struct {
+	UStNr string `json:"ustnr"`
 }
 
-type Date struct {
-	Year  string `xml:"year,attr"`
-	Month string `xml:"month,attr"`
-	Day   string `xml:"day,attr"`
-}
+func readConfig() *Config {
+	f, err := os.Open(configName)
+	if err != nil {
+		log.Fatalf("Reading config at '%s': %v", configName, err)
+	}
 
-type Receipt struct {
-	Date     Date   `xml:"date"`
-	Incoming string `xml:"payment>taxaccountincoming"`
-	Outgoing string `xml:"payment>taxaccountoutgoing"`
-	Amount   struct {
-		TaxHandling string `xml:"tax,attr"`
-		Value       string `xml:",chardata"`
-	} `xml:"payment>amount"`
+	config := new(Config)
+	d := json.NewDecoder(f)
+	d.DisallowUnknownFields()
+
+	if err = d.Decode(config); err != nil {
+		log.Fatalf("Parsing config at '%s': %v", configName, err)
+	}
+
+	return config
 }
 
 func main() {
@@ -42,24 +38,11 @@ func main() {
 	jesFile := os.Args[1]
 	//month := os.Args[2]
 
-	zipF, err := zip.OpenReader(jesFile)
-	if err != nil {
-		log.Fatalf("Opening file '%s': %v", jesFile, err)
-	}
-	defer zipF.Close()
+	conf := readConfig()
 
-	f, err := zipF.File[0].Open()
-	if err != nil {
-		log.Fatalf("Decompressing file '%s': %v", jesFile, err)
-	}
-	defer f.Close()
+	jes := readJesFile(jesFile)
 
-	var eur Eur
-	decoder := xml.NewDecoder(f)
-	err = decoder.Decode(&eur)
-	if err != nil {
-		log.Fatalf("Decoding '%s': %v", jesFile, err)
-	}
+	log.Printf("%+v", jes)
 
-	log.Printf("%+v", eur)
+	buildVatFile(conf, jes)
 }
