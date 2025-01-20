@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"strconv"
 )
 
 const configName = "config.json"
@@ -49,7 +50,12 @@ func main() {
 	}
 
 	jesFile := os.Args[1]
-	month := os.Args[2]
+	monthStr := os.Args[2]
+
+	month, err := strconv.Atoi(monthStr)
+	if err != nil {
+		log.Fatalf("Invalid month: %s (%v)", monthStr, err)
+	}
 
 	conf := readConfig()
 

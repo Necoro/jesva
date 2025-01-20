@@ -6,11 +6,23 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"golang.org/x/text/encoding/charmap"
 )
+
+type Mapping struct {
+	kz      int
+	account int
+	amount  bool
+}
+
+var kzToAccounts = []Mapping{
+	{81, 500, true},
+	{83, 510, true},
+}
 
 // as defined by Elster
 const header = `<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>` + "\n"
@@ -34,7 +46,7 @@ type Datenlieferant struct {
 }
 
 type Unternehmer struct {
-	Bezeichnung string `xml:"Bezeichnung,omitifempty"`
+	Bezeichnung string `xml:"Bezeichnung,omitempty"`
 	Name        string `xml:"Name"`
 	Vorname     string `xml:"Vorname"`
 	Strasse     string `xml:"Str"`
@@ -48,7 +60,7 @@ type Unternehmer struct {
 
 type Kennzahl struct {
 	account *Account
-	amount  int
+	amount  Cents
 }
 
 func (k Kennzahl) isRounded() bool {
@@ -56,11 +68,12 @@ func (k Kennzahl) isRounded() bool {
 }
 
 func (k Kennzahl) amountString() string {
+	integer := k.amount / 100
+
 	if k.isRounded() {
-		return fmt.Sprintf("%d", k.amount)
+		return fmt.Sprintf("%d", integer)
 	} else {
 		frac := k.amount % 100
-		integer := k.amount / 100
 		return fmt.Sprintf("%d.%02d", integer, frac)
 	}
 }
@@ -86,23 +99,25 @@ func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 }
 
 type UStVA struct {
-	Jahr         string `xml:"Jahr"`
+	Jahr         int    `xml:"Jahr"`
 	Zeitraum     string `xml:"Zeitraum"`
 	Steuernummer string `xml:"Steuernummer"`
 	Kennzahlen   Kennzahlen
 }
 
-func anmeldungForYear(year string) *Anmeldung {
+func anmeldungForYear(year int) *Anmeldung {
+	yearStr := strconv.Itoa(year)
+
 	name := xml.Name{
 		Local: "Anmeldungssteuern",
-		Space: "http://finkonsens.de/elster/elsteranmeldung/ustva/v" + year,
+		Space: "http://finkonsens.de/elster/elsteranmeldung/ustva/v" + yearStr,
 	}
 
 	now := time.Now()
 
 	anmeldung := Anmeldung{
 		XMLName: name,
-		Version: year,
+		Version: yearStr,
 		Date:    now.Format("20060102"),
 	}
 
@@ -150,23 +165,25 @@ func fillUnternehmer(conf *Config, jesData *Eur) Unternehmer {
 	}
 }
 
-func fillUStVA(conf *Config, jesData *Eur, month string) UStVA {
+func fillUStVA(conf *Config, jesData *Eur, month int) UStVA {
 	ustva := UStVA{
 		Jahr:         jesData.Year(),
-		Zeitraum:     month,
+		Zeitraum:     fmt.Sprintf("%02d", month),
 		Steuernummer: conf.UStNr,
 		Kennzahlen:   make(map[int]Kennzahl),
 	}
 
-	ustva.Kennzahlen[81] = Kennzahl{
-		amount:  12342,
-		account: jesData.AccountInfo[880],
+	for _, m := range kzToAccounts {
+		val, acc := jesData.ReceiptValue(m.account, m.amount, month)
+		if val != 0 {
+			ustva.Kennzahlen[m.kz] = Kennzahl{acc, val}
+		}
 	}
 
 	return ustva
 }
 
-func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month string) {
+func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
 	// ISO-8859-15 is requested
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
@@ -190,6 +207,6 @@ func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month string) {
 	}
 }
 
-func buildVatFile(conf *Config, jesData *Eur, month string) {
+func buildVatFile(conf *Config, jesData *Eur, month int) {
 	writeVatFile(os.Stdout, conf, jesData, month)
 }
