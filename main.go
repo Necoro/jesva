@@ -60,7 +60,7 @@ func (q Quarter) includes(d Date) bool {
 
 func (q Quarter) String() string {
 	// 4x = Qx
-	return strconv.Itoa(int(q) + 40)
+	return fmt.Sprintf("4%d", q)
 }
 
 // readConfig loads the configuration from the location specified in `configName`
