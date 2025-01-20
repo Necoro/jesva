@@ -19,7 +19,7 @@ jesva jes-datei.eux monat > ustva_monat.xml
 
 ### Installation
 
-`go get github.com/Necoro/jesva`
+`go install github.com/Necoro/jesva@latest`
 
 Alternativ:
 ```  
