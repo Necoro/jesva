@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-type Cents = int
+type Cents = int64
 
 type SumType bool
 
@@ -112,7 +112,7 @@ func (p *Payment) getValue() Cents {
 func (p *Payment) getAmount(perc int) Cents {
 	val := p.getValue()
 
-	if !p.isIncludingTax() {
+	if !p.isIncludingTax() || perc == 0 {
 		return val
 	}
 
@@ -123,6 +123,10 @@ func (p *Payment) getAmount(perc int) Cents {
 
 // getTax returns the taxes of this Payment.
 func (p *Payment) getTax(perc int) Cents {
+	if perc == 0 {
+		return Cents(0)
+	}
+
 	val := p.getValue()
 
 	if p.isIncludingTax() {
