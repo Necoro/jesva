@@ -116,6 +116,7 @@ func main() {
 
 	conf := readConfig()
 	jes := readJesFile(jesFile)
+	jes.Validate()
 
 	BuildVatFile(conf, jes, period)
 }

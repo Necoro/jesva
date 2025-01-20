@@ -26,6 +26,7 @@ type Eur struct {
 	Company     string           `xml:"general>company"`
 	TaxID       string           `xml:"general>taxid"`
 	Start       Date             `xml:"general>businessyearrange>daterange>start>date"`
+	End         Date             `xml:"general>businessyearrange>daterange>end>date"`
 	Receipts    []Receipt        `xml:"receipts>receipt"`
 	Accounts    []Accounts       `xml:"accounts"`
 	AccountInfo map[int]*Account `xml:"-"`
@@ -175,6 +176,35 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 	}
 
 	return sum
+}
+
+func (e *Eur) Validate() {
+	if e.Start.Year != e.End.Year {
+		log.Fatalf("JES spans multiple years. This is not supported.")
+	}
+
+	// Check for unsupported tax accounts
+	knownAccounts := make(map[int]struct{})
+	for _, m := range mappings {
+		knownAccounts[m.account] = struct{}{}
+	}
+
+	checkFn := func(acc int) {
+		if acc == 0 { // account not given
+			return
+		}
+
+		if _, ok := knownAccounts[acc]; !ok {
+			log.Fatalf("Unsupported tax account '%d'", acc)
+		}
+	}
+
+	for _, r := range e.Receipts {
+		for _, p := range r.Payments {
+			checkFn(p.Incoming)
+			checkFn(p.Outgoing)
+		}
+	}
 }
 
 func readJesFile(jesFile string) *Eur {
