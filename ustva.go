@@ -38,7 +38,7 @@ var mappings = []Mapping{
 	// §13b UStG VSt
 	{67, 200, Tax},
 	// Leistungsempfänger schuldet USt
-	{61, 610, Amount},
+	{60, 610, Amount},
 	// TODO: Einfuhrumsatzsteuer
 }
 
