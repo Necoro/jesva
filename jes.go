@@ -7,13 +7,15 @@ import (
 )
 
 type Eur struct {
-	XmlName  xml.Name  `xml:"eur"`
-	Name     string    `xml:"general>name"`
-	Address  string    `xml:"general>address"`
-	Company  string    `xml:"general>company"`
-	TaxID    string    `xml:"general>taxid"`
-	Start    Date      `xml:"general>businessyearrange>daterange>start>date"`
-	Receipts []Receipt `xml:"receipts>receipt"`
+	XmlName     xml.Name         `xml:"eur"`
+	Name        string           `xml:"general>name"`
+	Address     string           `xml:"general>address"`
+	Company     string           `xml:"general>company"`
+	TaxID       string           `xml:"general>taxid"`
+	Start       Date             `xml:"general>businessyearrange>daterange>start>date"`
+	Receipts    []Receipt        `xml:"receipts>receipt"`
+	Accounts    []Accounts       `xml:"accounts"`
+	AccountInfo map[int]*Account `xml:"-"`
 }
 
 type Date struct {
@@ -32,8 +34,38 @@ type Receipt struct {
 	} `xml:"payment>amount"`
 }
 
+type Accounts struct {
+	Accounts []Account `xml:"account"`
+	Type     string    `xml:"type,attr"`
+}
+
+type Account struct {
+	Type     string `xml:"type,attr"`
+	Rounding string `xml:"rounding,attr"`
+	Number   int    `xml:"number"`
+	Percent  int    `xml:"percent"`
+}
+
+func (a *Account) NeedsRounding() bool {
+	return a.Rounding == "rounding_down"
+}
+
 func (e *Eur) Year() string {
 	return e.Start.Year
+}
+
+func (e *Eur) prepareAccountInfo() {
+	e.AccountInfo = make(map[int]*Account)
+
+	for _, a := range e.Accounts {
+		if a.Type != "tax" {
+			continue
+		}
+
+		for _, a := range a.Accounts {
+			e.AccountInfo[a.Number] = &a
+		}
+	}
 }
 
 func readJesFile(jesFile string) *Eur {
@@ -55,6 +87,8 @@ func readJesFile(jesFile string) *Eur {
 	if err != nil {
 		log.Fatalf("Decoding '%s': %v", jesFile, err)
 	}
+
+	eur.prepareAccountInfo()
 
 	return eur
 }

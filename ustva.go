@@ -46,16 +46,37 @@ type Unternehmer struct {
 	Email       string `xml:"Email,omitempty"`
 }
 
-type Kennzahlen map[int]int
+type Kennzahl struct {
+	account *Account
+	amount  int
+}
+
+func (k Kennzahl) isRounded() bool {
+	return k.account.NeedsRounding()
+}
+
+func (k Kennzahl) amountString() string {
+	if k.isRounded() {
+		return fmt.Sprintf("%d", k.amount)
+	} else {
+		frac := k.amount % 100
+		integer := k.amount / 100
+		return fmt.Sprintf("%d.%02d", integer, frac)
+	}
+}
+
+type Kennzahlen map[int]Kennzahl
 
 func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	for key, val := range k {
+		if val.account == nil {
+			log.Fatalf("No account info for Kennzahl %d.", key)
+		}
+
 		name := xml.Name{Local: fmt.Sprintf("Kz%02d", key)}
 		se := xml.StartElement{Name: name}
 
-		frac := val % 100
-		integer := val / 100
-		amount := fmt.Sprintf("%d.%02d", integer, frac)
+		amount := val.amountString()
 
 		e.EncodeToken(se)
 		e.EncodeToken(xml.CharData([]byte(amount)))
@@ -69,10 +90,6 @@ type UStVA struct {
 	Zeitraum     string `xml:"Zeitraum"`
 	Steuernummer string `xml:"Steuernummer"`
 	Kennzahlen   Kennzahlen
-}
-
-func buildVatFile(conf *Config, jesData *Eur, month string) {
-	writeVatFile(os.Stdout, conf, jesData, month)
 }
 
 func anmeldungForYear(year string) *Anmeldung {
@@ -138,10 +155,13 @@ func fillUStVA(conf *Config, jesData *Eur, month string) UStVA {
 		Jahr:         jesData.Year(),
 		Zeitraum:     month,
 		Steuernummer: conf.UStNr,
-		Kennzahlen:   make(map[int]int),
+		Kennzahlen:   make(map[int]Kennzahl),
 	}
 
-	ustva.Kennzahlen[81] = 123400
+	ustva.Kennzahlen[81] = Kennzahl{
+		amount:  12342,
+		account: jesData.AccountInfo[880],
+	}
 
 	return ustva
 }
@@ -168,4 +188,8 @@ func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month string) {
 	if err := xmlEncoder.Encode(a); err != nil {
 		log.Fatalf("Error encoding XML: %v", err)
 	}
+}
+
+func buildVatFile(conf *Config, jesData *Eur, month string) {
+	writeVatFile(os.Stdout, conf, jesData, month)
 }
