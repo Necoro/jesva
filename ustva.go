@@ -46,10 +46,29 @@ type Unternehmer struct {
 	Email       string `xml:"Email,omitempty"`
 }
 
+type Kennzahlen map[int]int
+
+func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	for key, val := range k {
+		name := xml.Name{Local: fmt.Sprintf("Kz%02d", key)}
+		se := xml.StartElement{Name: name}
+
+		frac := val % 100
+		integer := val / 100
+		amount := fmt.Sprintf("%d.%02d", integer, frac)
+
+		e.EncodeToken(se)
+		e.EncodeToken(xml.CharData([]byte(amount)))
+		e.EncodeToken(se.End())
+	}
+	return nil
+}
+
 type UStVA struct {
 	Jahr         string `xml:"Jahr"`
 	Zeitraum     string `xml:"Zeitraum"`
 	Steuernummer string `xml:"Steuernummer"`
+	Kennzahlen   Kennzahlen
 }
 
 func buildVatFile(conf *Config, jesData *Eur, month string) {
@@ -119,13 +138,15 @@ func fillUStVA(conf *Config, jesData *Eur, month string) UStVA {
 		Jahr:         jesData.Year(),
 		Zeitraum:     month,
 		Steuernummer: conf.UStNr,
+		Kennzahlen:   make(map[int]int),
 	}
+
+	ustva.Kennzahlen[81] = 123400
 
 	return ustva
 }
 
 func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month string) {
-
 	// ISO-8859-15 is requested
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
