@@ -12,6 +12,13 @@ import (
 
 type Cents = int
 
+type SumType bool
+
+const (
+	Amount SumType = true
+	Tax    SumType = false
+)
+
 type Eur struct {
 	XmlName     xml.Name         `xml:"eur"`
 	Name        string           `xml:"general>name"`
@@ -61,6 +68,8 @@ func (e *Eur) Year() int {
 	return e.Start.Year
 }
 
+// prepareAccountInfo consolidates the information on tax accounts into
+// the `AccountInfo` map
 func (e *Eur) prepareAccountInfo() {
 	e.AccountInfo = make(map[int]*Account)
 
@@ -79,6 +88,7 @@ func (r *Receipt) isIncludingTax() bool {
 	return r.Amount.TaxHandling == "incl"
 }
 
+// getValue returns the value of that Receipt in Cents.
 func (r *Receipt) getValue() Cents {
 	if r.Amount.value != 0 {
 		return r.Amount.value
@@ -98,6 +108,7 @@ func (r *Receipt) getValue() Cents {
 	return r.Amount.value
 }
 
+// getAmount returns the Receipt's amount without taxes.
 func (r *Receipt) getAmount(perc int) Cents {
 	val := r.getValue()
 
@@ -110,6 +121,7 @@ func (r *Receipt) getAmount(perc int) Cents {
 	return Cents(amt)
 }
 
+// getTax returns the Receipt's taxes.
 func (r *Receipt) getTax(perc int) Cents {
 	val := r.getValue()
 
@@ -135,7 +147,8 @@ func (e *Eur) receipts(account int, month int) iter.Seq[*Receipt] {
 	}
 }
 
-func (e *Eur) ReceiptValue(account int, amount bool, month int) (Cents, *Account) {
+// ReceiptSum gathers the sum of all relevant receipts for that account.
+func (e *Eur) ReceiptSum(account int, sumType SumType, month int) (Cents, *Account) {
 	acc := e.AccountInfo[account]
 	if acc == nil {
 		log.Fatalf("No info found for account %d", account)
@@ -143,10 +156,13 @@ func (e *Eur) ReceiptValue(account int, amount bool, month int) (Cents, *Account
 
 	var sum Cents
 	for r := range e.receipts(account, month) {
-		if amount {
+		switch sumType {
+		case Amount:
 			sum += r.getAmount(acc.Percent)
-		} else {
+		case Tax:
 			sum += r.getTax(acc.Percent)
+		default:
+			log.Fatalf("Unexpected SumType: %v", sumType)
 		}
 	}
 
@@ -154,22 +170,36 @@ func (e *Eur) ReceiptValue(account int, amount bool, month int) (Cents, *Account
 }
 
 func readJesFile(jesFile string) *Eur {
+	// JES stores the file as a ZIP archive
 	zipF, err := zip.OpenReader(jesFile)
 	if err != nil {
 		log.Fatalf("Opening file '%s': %v", jesFile, err)
 	}
 	defer zipF.Close()
 
-	f, err := zipF.File[0].Open()
+	// data is stored in `data.xml`
+	var dataFile *zip.File
+	for _, file := range zipF.File {
+		if file.Name == "data.xml" {
+			dataFile = file
+			break
+		}
+	}
+
+	if dataFile == nil {
+		log.Fatalf("Could not find data.xml in JES-File '%s'.", jesFile)
+	}
+
+	f, err := dataFile.Open()
 	if err != nil {
 		log.Fatalf("Decompressing file '%s': %v", jesFile, err)
 	}
 	defer f.Close()
 
+	// Decode XML data
 	eur := new(Eur)
 	decoder := xml.NewDecoder(f)
-	err = decoder.Decode(eur)
-	if err != nil {
+	if err = decoder.Decode(eur); err != nil {
 		log.Fatalf("Decoding '%s': %v", jesFile, err)
 	}
 

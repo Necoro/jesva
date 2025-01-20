@@ -13,20 +13,25 @@ import (
 	"golang.org/x/text/encoding/charmap"
 )
 
+// Mapping of JES account types to Elster-Kennzahlen.
+// `typ` specifies whether we sum gross amounts or taxes.
 type Mapping struct {
 	kz      int
 	account int
-	amount  bool
+	typ     SumType
 }
 
-var kzToAccounts = []Mapping{
-	{81, 500, true},
-	{83, 510, true},
+var mappings = []Mapping{
+	// Steuerpflichtige Umsätze 19%
+	{81, 500, Amount},
+	// Steuerpflichtige Umsätze 7%
+	{83, 510, Amount},
 }
 
 // as defined by Elster
 const header = `<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>` + "\n"
 
+// Anmeldung is the final XML structure requested by Elster.
 type Anmeldung struct {
 	XMLName        xml.Name
 	Version        string         `xml:"version,attr"`
@@ -36,6 +41,9 @@ type Anmeldung struct {
 	UStVA          UStVA          `xml:"Steuerfall>Umsatzsteuervoranmeldung"`
 }
 
+// Datenlieferant holds data about who processed the data.
+// We don't make any distinction and also fill it with the data from the enterprise.
+// Unsure how it actually matters.
 type Datenlieferant struct {
 	Name    string `xml:"Name"`
 	Strasse string `xml:"Strasse"`
@@ -45,6 +53,8 @@ type Datenlieferant struct {
 	Email   string `xml:"Email,omitempty"`
 }
 
+// Unternehmer holds the businesses general data.
+// Most of it is *not* part of JES and needs to provided additionally.
 type Unternehmer struct {
 	Bezeichnung string `xml:"Bezeichnung,omitempty"`
 	Name        string `xml:"Name"`
@@ -58,28 +68,59 @@ type Unternehmer struct {
 	Email       string `xml:"Email,omitempty"`
 }
 
+// UStVA holds the actual tax relevant content.
+type UStVA struct {
+	Jahr         int    `xml:"Jahr"`
+	Zeitraum     string `xml:"Zeitraum"`
+	Steuernummer string `xml:"Steuernummer"`
+	Kennzahlen   Kennzahlen
+}
+
+// Kennzahl is the content of one field on the UStVA form.
 type Kennzahl struct {
 	account *Account
 	amount  Cents
 }
 
-func (k Kennzahl) isRounded() bool {
-	return k.account.NeedsRounding()
+// Kennzahlen represents all filled fields on the UStVA form.
+// It maps the field number to its content.
+type Kennzahlen map[int]Kennzahl
+
+func (k Kennzahl) withFraction() bool {
+	return !k.account.NeedsRounding()
 }
 
 func (k Kennzahl) amountString() string {
 	integer := k.amount / 100
 
-	if k.isRounded() {
-		return fmt.Sprintf("%d", integer)
-	} else {
+	if k.withFraction() {
 		frac := k.amount % 100
 		return fmt.Sprintf("%d.%02d", integer, frac)
+	} else {
+		return fmt.Sprintf("%d", integer)
 	}
 }
 
-type Kennzahlen map[int]Kennzahl
+// fillUStVA generates the content for the UStVA fields by processing the JES receipts.
+func fillUStVA(conf *Config, jesData *Eur, month int) UStVA {
+	ustva := UStVA{
+		Jahr:         jesData.Year(),
+		Zeitraum:     fmt.Sprintf("%02d", month),
+		Steuernummer: conf.UStNr,
+		Kennzahlen:   make(map[int]Kennzahl),
+	}
 
+	for _, m := range mappings {
+		val, acc := jesData.ReceiptSum(m.account, m.typ, month)
+		if val != 0 {
+			ustva.Kennzahlen[m.kz] = Kennzahl{acc, val}
+		}
+	}
+
+	return ustva
+}
+
+// MarshalXML converts the Kennzahlen map into the <KzXY> structure.
 func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	for key, val := range k {
 		if val.account == nil {
@@ -96,13 +137,6 @@ func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 		e.EncodeToken(se.End())
 	}
 	return nil
-}
-
-type UStVA struct {
-	Jahr         int    `xml:"Jahr"`
-	Zeitraum     string `xml:"Zeitraum"`
-	Steuernummer string `xml:"Steuernummer"`
-	Kennzahlen   Kennzahlen
 }
 
 func anmeldungForYear(year int) *Anmeldung {
@@ -165,25 +199,8 @@ func fillUnternehmer(conf *Config, jesData *Eur) Unternehmer {
 	}
 }
 
-func fillUStVA(conf *Config, jesData *Eur, month int) UStVA {
-	ustva := UStVA{
-		Jahr:         jesData.Year(),
-		Zeitraum:     fmt.Sprintf("%02d", month),
-		Steuernummer: conf.UStNr,
-		Kennzahlen:   make(map[int]Kennzahl),
-	}
-
-	for _, m := range kzToAccounts {
-		val, acc := jesData.ReceiptValue(m.account, m.amount, month)
-		if val != 0 {
-			ustva.Kennzahlen[m.kz] = Kennzahl{acc, val}
-		}
-	}
-
-	return ustva
-}
-
-func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
+// WriteVatFile writes the UStVA XML to the given Writer.
+func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
 	// ISO-8859-15 is requested
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
@@ -193,20 +210,23 @@ func writeVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
 		log.Fatalf("Writing XML: %v", err)
 	}
 
-	xmlEncoder := xml.NewEncoder(w)
-	xmlEncoder.Indent("", "    ")
-	defer xmlEncoder.Close()
-
+	// fill data
 	a := anmeldungForYear(jesData.Year())
 	a.Datenlieferant = fillDatenlieferant(conf, jesData)
 	a.Unternehmer = fillUnternehmer(conf, jesData)
 	a.UStVA = fillUStVA(conf, jesData, month)
+
+	// encode to XML
+	xmlEncoder := xml.NewEncoder(w)
+	xmlEncoder.Indent("", "    ") // indentation is nice for debugging
+	defer xmlEncoder.Close()
 
 	if err := xmlEncoder.Encode(a); err != nil {
 		log.Fatalf("Error encoding XML: %v", err)
 	}
 }
 
-func buildVatFile(conf *Config, jesData *Eur, month int) {
-	writeVatFile(os.Stdout, conf, jesData, month)
+// BuildVatFile prints the UStVA XML to Stdout.
+func BuildVatFile(conf *Config, jesData *Eur, month int) {
+	WriteVatFile(os.Stdout, conf, jesData, month)
 }

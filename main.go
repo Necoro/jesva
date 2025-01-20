@@ -9,6 +9,8 @@ import (
 
 const configName = "config.json"
 
+// Config hold UStVA specific configuration that is not part of JES.
+// More details can be found in the config.example.json
 type Config struct {
 	UStNr     string `json:"ustnr"`
 	Name      string `json:"name"`
@@ -26,6 +28,7 @@ type Config struct {
 	}
 }
 
+// readConfig loads the configuration from the location specified in `configName`
 func readConfig() *Config {
 	f, err := os.Open(configName)
 	if err != nil {
@@ -44,7 +47,8 @@ func readConfig() *Config {
 }
 
 func main() {
-	log.SetFlags(0)
+	log.SetFlags(0) // no prefix for logging
+
 	if len(os.Args) < 3 {
 		log.Fatalf("Usage: %s <jes.file> <month>", os.Args[0])
 	}
@@ -58,10 +62,7 @@ func main() {
 	}
 
 	conf := readConfig()
-
 	jes := readJesFile(jesFile)
 
-	//log.Printf("%+v", jes)
-
-	buildVatFile(conf, jes, month)
+	BuildVatFile(conf, jes, month)
 }
