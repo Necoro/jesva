@@ -9,7 +9,20 @@ import (
 const configName = "config.json"
 
 type Config struct {
-	UStNr string `json:"ustnr"`
+	UStNr     string `json:"ustnr"`
+	Name      string `json:"name"`
+	FirstName string `json:"firstName"`
+	Address   struct {
+		Street       string `json:"street"`
+		Number       string `json:"number"`
+		NumberSuffix string `json:"suffix"`
+		Plz          string `json:"plz"`
+		City         string `json:"city"`
+	}
+	Contact struct {
+		Telephone string `json:"tel"`
+		Mail      string `json:"mail"`
+	}
 }
 
 func readConfig() *Config {
@@ -36,13 +49,13 @@ func main() {
 	}
 
 	jesFile := os.Args[1]
-	//month := os.Args[2]
+	month := os.Args[2]
 
 	conf := readConfig()
 
 	jes := readJesFile(jesFile)
 
-	log.Printf("%+v", jes)
+	//log.Printf("%+v", jes)
 
-	buildVatFile(conf, jes)
+	buildVatFile(conf, jes, month)
 }

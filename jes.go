@@ -32,6 +32,10 @@ type Receipt struct {
 	} `xml:"payment>amount"`
 }
 
+func (e *Eur) Year() string {
+	return e.Start.Year
+}
+
 func readJesFile(jesFile string) *Eur {
 	zipF, err := zip.OpenReader(jesFile)
 	if err != nil {
