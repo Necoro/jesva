@@ -26,6 +26,20 @@ var mappings = []Mapping{
 	{81, 500, Amount},
 	// Steuerpflichtige Umsätze 7%
 	{83, 510, Amount},
+	// Steuerpflichtige Umsätze 0%
+	{87, 520, Amount},
+	// VSt 19%
+	{66, 100, Tax},
+	// VSt 7%
+	{66, 110, Tax},
+	// §13b UStG USt
+	{46, 600, Amount},
+	{47, 600, Tax},
+	// §13b UStG VSt
+	{67, 200, Tax},
+	// Leistungsempfänger schuldet USt
+	{61, 610, Amount},
+	// TODO: Einfuhrumsatzsteuer
 }
 
 // as defined by Elster
@@ -78,22 +92,18 @@ type UStVA struct {
 
 // Kennzahl is the content of one field on the UStVA form.
 type Kennzahl struct {
-	account *Account
-	amount  Cents
+	withFraction bool
+	amount       Cents
 }
 
 // Kennzahlen represents all filled fields on the UStVA form.
 // It maps the field number to its content.
 type Kennzahlen map[int]Kennzahl
 
-func (k Kennzahl) withFraction() bool {
-	return !k.account.NeedsRounding()
-}
-
 func (k Kennzahl) amountString() string {
 	integer := k.amount / 100
 
-	if k.withFraction() {
+	if k.withFraction {
 		frac := k.amount % 100
 		return fmt.Sprintf("%d.%02d", integer, frac)
 	} else {
@@ -111,9 +121,18 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 	}
 
 	for _, m := range mappings {
-		val, acc := jesData.ReceiptSum(m.account, m.typ, period)
+		val := jesData.ReceiptSum(m.account, m.typ, period)
 		if val != 0 {
-			ustva.Kennzahlen[m.kz] = Kennzahl{acc, val}
+			kz, ok := ustva.Kennzahlen[m.kz]
+			if ok {
+				kz.amount += val
+			} else {
+				kz = Kennzahl{
+					withFraction: m.typ == Tax,
+					amount:       val,
+				}
+			}
+			ustva.Kennzahlen[m.kz] = kz
 		}
 	}
 
@@ -123,10 +142,6 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 // MarshalXML converts the Kennzahlen map into the <KzXY> structure.
 func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	for key, val := range k {
-		if val.account == nil {
-			log.Fatalf("No account info for Kennzahl %d.", key)
-		}
-
 		name := xml.Name{Local: fmt.Sprintf("Kz%02d", key)}
 		se := xml.StartElement{Name: name}
 

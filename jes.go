@@ -60,10 +60,6 @@ type Account struct {
 	Percent  int    `xml:"percent"`
 }
 
-func (a *Account) NeedsRounding() bool {
-	return a.Rounding == "rounding_down"
-}
-
 func (e *Eur) Year() int {
 	return e.Start.Year
 }
@@ -148,7 +144,7 @@ func (e *Eur) receipts(account int, period Period) iter.Seq[*Receipt] {
 }
 
 // ReceiptSum gathers the sum of all relevant receipts for that account.
-func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) (Cents, *Account) {
+func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 	acc := e.AccountInfo[account]
 	if acc == nil {
 		log.Fatalf("No info found for account %d", account)
@@ -166,7 +162,7 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) (Cents, *A
 		}
 	}
 
-	return sum, acc
+	return sum
 }
 
 func readJesFile(jesFile string) *Eur {
