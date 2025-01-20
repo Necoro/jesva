@@ -135,10 +135,10 @@ func (r *Receipt) getTax(perc int) Cents {
 	return Cents(tax)
 }
 
-func (e *Eur) receipts(account int, month int) iter.Seq[*Receipt] {
+func (e *Eur) receipts(account int, period Period) iter.Seq[*Receipt] {
 	return func(yield func(*Receipt) bool) {
 		for _, r := range e.Receipts {
-			if r.Date.Month == month && (r.Incoming == account || r.Outgoing == account) {
+			if period.includes(r.Date) && (r.Incoming == account || r.Outgoing == account) {
 				if !yield(r) {
 					return
 				}
@@ -148,14 +148,14 @@ func (e *Eur) receipts(account int, month int) iter.Seq[*Receipt] {
 }
 
 // ReceiptSum gathers the sum of all relevant receipts for that account.
-func (e *Eur) ReceiptSum(account int, sumType SumType, month int) (Cents, *Account) {
+func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) (Cents, *Account) {
 	acc := e.AccountInfo[account]
 	if acc == nil {
 		log.Fatalf("No info found for account %d", account)
 	}
 
 	var sum Cents
-	for r := range e.receipts(account, month) {
+	for r := range e.receipts(account, period) {
 		switch sumType {
 		case Amount:
 			sum += r.getAmount(acc.Percent)

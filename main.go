@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -28,6 +29,40 @@ type Config struct {
 	}
 }
 
+type Period interface {
+	includes(Date) bool
+	String() string
+}
+
+type Month uint8
+
+func (m Month) includes(d Date) bool {
+	return d.Month == int(m)
+}
+
+func (m Month) String() string {
+	return fmt.Sprintf("%02d", m)
+}
+
+type Quarter uint8
+
+const (
+	Q1 Quarter = iota + 1
+	Q2
+	Q3
+	Q4
+)
+
+func (q Quarter) includes(d Date) bool {
+	end := int(q) * 3
+	return d.Month <= end && d.Month > end-3
+}
+
+func (q Quarter) String() string {
+	// 4x = Qx
+	return strconv.Itoa(int(q) + 40)
+}
+
 // readConfig loads the configuration from the location specified in `configName`
 func readConfig() *Config {
 	f, err := os.Open(configName)
@@ -50,19 +85,37 @@ func main() {
 	log.SetFlags(0) // no prefix for logging
 
 	if len(os.Args) < 3 {
-		log.Fatalf("Usage: %s <jes.file> <month>", os.Args[0])
+		log.Fatalf("Usage: %s <jes.file> <period>\n\n<period> is either 1-12 for the months, or Q1-Q4 for the quarters", os.Args[0])
 	}
 
 	jesFile := os.Args[1]
-	monthStr := os.Args[2]
+	periodStr := os.Args[2]
 
-	month, err := strconv.Atoi(monthStr)
-	if err != nil {
-		log.Fatalf("Invalid month: %s (%v)", monthStr, err)
+	var period Period
+	if periodStr[0] == 'q' || periodStr[0] == 'Q' {
+		switch periodStr[1] {
+		case '1':
+			period = Q1
+		case '2':
+			period = Q2
+		case '3':
+			period = Q3
+		case '4':
+			period = Q4
+		default:
+			log.Fatalf("Unknown quarter '%s'", periodStr)
+		}
+	} else {
+		month, err := strconv.Atoi(periodStr)
+		if err != nil {
+			log.Fatalf("Invalid month: %s (%v)", periodStr, err)
+		}
+
+		period = Month(month)
 	}
 
 	conf := readConfig()
 	jes := readJesFile(jesFile)
 
-	BuildVatFile(conf, jes, month)
+	BuildVatFile(conf, jes, period)
 }

@@ -102,16 +102,16 @@ func (k Kennzahl) amountString() string {
 }
 
 // fillUStVA generates the content for the UStVA fields by processing the JES receipts.
-func fillUStVA(conf *Config, jesData *Eur, month int) UStVA {
+func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 	ustva := UStVA{
 		Jahr:         jesData.Year(),
-		Zeitraum:     fmt.Sprintf("%02d", month),
+		Zeitraum:     period.String(),
 		Steuernummer: conf.UStNr,
 		Kennzahlen:   make(map[int]Kennzahl),
 	}
 
 	for _, m := range mappings {
-		val, acc := jesData.ReceiptSum(m.account, m.typ, month)
+		val, acc := jesData.ReceiptSum(m.account, m.typ, period)
 		if val != 0 {
 			ustva.Kennzahlen[m.kz] = Kennzahl{acc, val}
 		}
@@ -200,7 +200,7 @@ func fillUnternehmer(conf *Config, jesData *Eur) Unternehmer {
 }
 
 // WriteVatFile writes the UStVA XML to the given Writer.
-func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
+func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period) {
 	// ISO-8859-15 is requested
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
@@ -214,7 +214,7 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
 	a := anmeldungForYear(jesData.Year())
 	a.Datenlieferant = fillDatenlieferant(conf, jesData)
 	a.Unternehmer = fillUnternehmer(conf, jesData)
-	a.UStVA = fillUStVA(conf, jesData, month)
+	a.UStVA = fillUStVA(conf, jesData, period)
 
 	// encode to XML
 	xmlEncoder := xml.NewEncoder(w)
@@ -227,6 +227,6 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, month int) {
 }
 
 // BuildVatFile prints the UStVA XML to Stdout.
-func BuildVatFile(conf *Config, jesData *Eur, month int) {
-	WriteVatFile(os.Stdout, conf, jesData, month)
+func BuildVatFile(conf *Config, jesData *Eur, period Period) {
+	WriteVatFile(os.Stdout, conf, jesData, period)
 }
