@@ -26,7 +26,7 @@ type Eur struct {
 	Company     string           `xml:"general>company"`
 	TaxID       string           `xml:"general>taxid"`
 	Start       Date             `xml:"general>businessyearrange>daterange>start>date"`
-	Receipts    []*Receipt       `xml:"receipts>receipt"`
+	Receipts    []Receipt        `xml:"receipts>receipt"`
 	Accounts    []Accounts       `xml:"accounts"`
 	AccountInfo map[int]*Account `xml:"-"`
 }
@@ -38,14 +38,18 @@ type Date struct {
 }
 
 type Receipt struct {
-	Date     Date `xml:"date"`
-	Incoming int  `xml:"payment>taxaccountincoming"`
-	Outgoing int  `xml:"payment>taxaccountoutgoing"`
+	Date     Date       `xml:"date"`
+	Payments []*Payment `xml:"payment"`
+}
+
+type Payment struct {
+	Incoming int `xml:"taxaccountincoming"`
+	Outgoing int `xml:"taxaccountoutgoing"`
 	Amount   struct {
 		TaxHandling string `xml:"tax,attr"`
 		Value       string `xml:",chardata"`
 		value       Cents
-	} `xml:"payment>amount"`
+	} `xml:"amount"`
 }
 
 type Accounts struct {
@@ -80,17 +84,17 @@ func (e *Eur) prepareAccountInfo() {
 	}
 }
 
-func (r *Receipt) isIncludingTax() bool {
-	return r.Amount.TaxHandling == "incl"
+func (p *Payment) isIncludingTax() bool {
+	return p.Amount.TaxHandling == "incl"
 }
 
 // getValue returns the value of that Receipt in Cents.
-func (r *Receipt) getValue() Cents {
-	if r.Amount.value != 0 {
-		return r.Amount.value
+func (p *Payment) getValue() Cents {
+	if p.Amount.value != 0 {
+		return p.Amount.value
 	}
 
-	left, right, found := strings.Cut(r.Amount.Value, ".")
+	left, right, found := strings.Cut(p.Amount.Value, ".")
 	if !found {
 		right = "00"
 	}
@@ -100,15 +104,15 @@ func (r *Receipt) getValue() Cents {
 		log.Fatalf("Problem parsing amount '%s%s' as int: %v", left, right, err)
 	}
 
-	r.Amount.value = Cents(ival)
-	return r.Amount.value
+	p.Amount.value = Cents(ival)
+	return p.Amount.value
 }
 
-// getAmount returns the Receipt's amount without taxes.
-func (r *Receipt) getAmount(perc int) Cents {
-	val := r.getValue()
+// getAmount returns the gross amount of this Payment, i.e. without taxes.
+func (p *Payment) getAmount(perc int) Cents {
+	val := p.getValue()
 
-	if !r.isIncludingTax() {
+	if !p.isIncludingTax() {
 		return val
 	}
 
@@ -117,12 +121,12 @@ func (r *Receipt) getAmount(perc int) Cents {
 	return Cents(amt)
 }
 
-// getTax returns the Receipt's taxes.
-func (r *Receipt) getTax(perc int) Cents {
-	val := r.getValue()
+// getTax returns the taxes of this Payment.
+func (p *Payment) getTax(perc int) Cents {
+	val := p.getValue()
 
-	if r.isIncludingTax() {
-		amt := r.getAmount(perc)
+	if p.isIncludingTax() {
+		amt := p.getAmount(perc)
 		return val - amt
 	}
 
@@ -131,12 +135,16 @@ func (r *Receipt) getTax(perc int) Cents {
 	return Cents(tax)
 }
 
-func (e *Eur) receipts(account int, period Period) iter.Seq[*Receipt] {
-	return func(yield func(*Receipt) bool) {
+func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
+	return func(yield func(*Payment) bool) {
 		for _, r := range e.Receipts {
-			if period.includes(r.Date) && (r.Incoming == account || r.Outgoing == account) {
-				if !yield(r) {
-					return
+			if period.includes(r.Date) {
+				for _, p := range r.Payments {
+					if p.Incoming == account || p.Outgoing == account {
+						if !yield(p) {
+							return
+						}
+					}
 				}
 			}
 		}
@@ -151,12 +159,12 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 	}
 
 	var sum Cents
-	for r := range e.receipts(account, period) {
+	for p := range e.payments(account, period) {
 		switch sumType {
 		case Amount:
-			sum += r.getAmount(acc.Percent)
+			sum += p.getAmount(acc.Percent)
 		case Tax:
-			sum += r.getTax(acc.Percent)
+			sum += p.getTax(acc.Percent)
 		default:
 			log.Fatalf("Unexpected SumType: %v", sumType)
 		}
