@@ -33,7 +33,7 @@ var mappings = []Mapping{
 	// VSt 7%
 	{66, 110, Tax},
 	// Vst 0% --> Ignore
-	{-1, 120, Tax},
+	{0, 120, Ignore},
 	// §13b UStG USt
 	{46, 600, Amount},
 	{47, 600, Tax},
@@ -123,7 +123,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 	}
 
 	for _, m := range mappings {
-		if m.kz == -1 { // explicitly ignore
+		if m.typ == Ignore {
 			continue
 		}
 

@@ -12,11 +12,12 @@ import (
 
 type Cents = int64
 
-type SumType bool
+type SumType uint8
 
 const (
-	Amount SumType = true
-	Tax    SumType = false
+	Amount SumType = iota
+	Tax
+	Ignore
 )
 
 type Eur struct {
@@ -170,6 +171,8 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 			sum += p.getAmount(acc.Percent)
 		case Tax:
 			sum += p.getTax(acc.Percent)
+		case Ignore:
+			return 0
 		default:
 			log.Fatalf("Unexpected SumType: %v", sumType)
 		}
