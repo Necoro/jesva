@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const configName = "config.json"
@@ -42,6 +43,19 @@ func (m Month) includes(d Date) bool {
 
 func (m Month) String() string {
 	return fmt.Sprintf("%02d", m)
+}
+
+type Months struct {
+	start uint8
+	end   uint8
+}
+
+func (m Months) includes(d Date) bool {
+	return d.Month >= int(m.start) && d.Month <= int(m.end)
+}
+
+func (m Months) String() string {
+	return fmt.Sprintf("%02d", m.end)
 }
 
 type Quarter uint8
@@ -105,9 +119,28 @@ func main() {
 		default:
 			log.Fatalf("Unknown quarter '%s'", periodStr)
 		}
+	} else if idx := strings.IndexRune(periodStr, '-'); idx > 0 {
+		start := periodStr[:idx]
+		end := periodStr[idx+1:]
+
+		startI, err := strconv.Atoi(start)
+		if err != nil || startI < 1 || startI > 12 {
+			log.Fatalf("Invalid month: %s (%v)", start, err)
+		}
+		endI, err := strconv.Atoi(end)
+		if err != nil || endI < 1 || endI > 12 {
+			log.Fatalf("Invalid month: %s (%v)", end, err)
+		}
+
+		if endI <= startI {
+			log.Fatalf("End month must be larger than starting month.")
+		}
+
+		period = Months{uint8(startI), uint8(endI)}
+
 	} else {
 		month, err := strconv.Atoi(periodStr)
-		if err != nil {
+		if err != nil || month < 1 || month > 12 {
 			log.Fatalf("Invalid month: %s (%v)", periodStr, err)
 		}
 
