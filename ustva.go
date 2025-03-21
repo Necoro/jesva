@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -147,7 +149,10 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 
 // MarshalXML converts the Kennzahlen map into the <KzXY> structure.
 func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	for key, val := range k {
+	sortedKeys := slices.Sorted(maps.Keys(k))
+
+	for _, key := range sortedKeys {
+		val := k[key]
 		name := xml.Name{Local: fmt.Sprintf("Kz%02d", key)}
 		se := xml.StartElement{Name: name}
 
