@@ -91,6 +91,7 @@ type UStVA struct {
 	Jahr         int    `xml:"Jahr"`
 	Zeitraum     string `xml:"Zeitraum"`
 	Steuernummer string `xml:"Steuernummer"`
+	WIdNr        string `xml:"WIdNr,omitempty"`
 	Kennzahlen   Kennzahlen
 }
 
@@ -121,6 +122,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 		Jahr:         jesData.Year(),
 		Zeitraum:     period.String(),
 		Steuernummer: conf.UStNr,
+		WIdNr:        conf.WIdNr,
 		Kennzahlen:   make(map[int]Kennzahl),
 	}
 

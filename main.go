@@ -15,6 +15,7 @@ const configName = "config.json"
 // More details can be found in the config.example.json
 type Config struct {
 	UStNr     string `json:"ustnr"`
+	WIdNr     string `json:"widnr"`
 	Name      string `json:"name"`
 	FirstName string `json:"firstName"`
 	Address   struct {
