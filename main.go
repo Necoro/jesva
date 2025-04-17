@@ -2,14 +2,19 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 )
 
-const configName = "config.json"
+const (
+	configName    = "config.json"
+	configAltName = "jesva.json"
+)
 
 // Config hold UStVA specific configuration that is not part of JES.
 // More details can be found in the config.example.json
@@ -80,9 +85,20 @@ func (q Quarter) String() string {
 
 // readConfig loads the configuration from the location specified in `configName`
 func readConfig() *Config {
-	f, err := os.Open(configName)
+	name := configName
+
+	f, err := os.Open(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		name = configAltName
+		f, err = os.Open(name)
+
+		if errors.Is(err, fs.ErrNotExist) {
+			log.Fatalf("No config file ('%s' or '%s') found.", configName, configAltName)
+		}
+	}
+
 	if err != nil {
-		log.Fatalf("Reading config at '%s': %v", configName, err)
+		log.Fatalf("Reading config at '%s': %v", name, err)
 	}
 
 	config := new(Config)
@@ -90,7 +106,7 @@ func readConfig() *Config {
 	d.DisallowUnknownFields()
 
 	if err = d.Decode(config); err != nil {
-		log.Fatalf("Parsing config at '%s': %v", configName, err)
+		log.Fatalf("Parsing config at '%s': %v", name, err)
 	}
 
 	return config
