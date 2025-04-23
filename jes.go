@@ -31,6 +31,7 @@ type Eur struct {
 	Receipts    []Receipt        `xml:"receipts>receipt"`
 	Accounts    []Accounts       `xml:"accounts"`
 	AccountInfo map[int]*Account `xml:"-"`
+	TaxAccounts map[int]struct{} `xml:"-"`
 }
 
 type Date struct {
@@ -48,6 +49,7 @@ type Receipt struct {
 type Payment struct {
 	Incoming int `xml:"taxaccountincoming"`
 	Outgoing int `xml:"taxaccountoutgoing"`
+	Account  int `xml:"account"`
 	Amount   struct {
 		TaxHandling string `xml:"tax,attr"`
 		Value       string `xml:",chardata"`
@@ -61,10 +63,11 @@ type Accounts struct {
 }
 
 type Account struct {
-	Type     string `xml:"type,attr"`
-	Rounding string `xml:"rounding,attr"`
-	Number   int    `xml:"number"`
-	Percent  int    `xml:"percent"`
+	Type       string `xml:"type,attr"`
+	TaxAccount bool   `xml:"taxaccount,attr"`
+	Rounding   string `xml:"rounding,attr"`
+	Number     int    `xml:"number"`
+	Percent    int    `xml:"percent"`
 }
 
 func (e *Eur) Year() int {
@@ -75,14 +78,20 @@ func (e *Eur) Year() int {
 // the `AccountInfo` map
 func (e *Eur) prepareAccountInfo() {
 	e.AccountInfo = make(map[int]*Account)
+	e.TaxAccounts = make(map[int]struct{})
 
 	for _, a := range e.Accounts {
-		if a.Type != "tax" {
-			continue
-		}
-
-		for _, a := range a.Accounts {
-			e.AccountInfo[a.Number] = &a
+		switch a.Type {
+		case "tax":
+			for _, a := range a.Accounts {
+				e.AccountInfo[a.Number] = &a
+			}
+		case "booking":
+			for _, a := range a.Accounts {
+				if a.TaxAccount {
+					e.TaxAccounts[a.Number] = struct{}{}
+				}
+			}
 		}
 	}
 }
@@ -147,7 +156,8 @@ func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
 		for _, r := range e.Receipts {
 			if r.Paid && period.includes(r.Date) {
 				for _, p := range r.Payments {
-					if p.Incoming == account || p.Outgoing == account {
+					_, isTaxAccount := e.TaxAccounts[p.Account]
+					if (p.Incoming == account || p.Outgoing == account) && !isTaxAccount {
 						if !yield(p) {
 							return
 						}
