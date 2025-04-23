@@ -41,6 +41,7 @@ type Date struct {
 
 type Receipt struct {
 	Date     Date       `xml:"date"`
+	Paid     bool       `xml:"paid,attr"`
 	Payments []*Payment `xml:"payment"`
 }
 
@@ -144,7 +145,7 @@ func (p *Payment) getTax(perc int) Cents {
 func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
 	return func(yield func(*Payment) bool) {
 		for _, r := range e.Receipts {
-			if period.includes(r.Date) {
+			if r.Paid && period.includes(r.Date) {
 				for _, p := range r.Payments {
 					if p.Incoming == account || p.Outgoing == account {
 						if !yield(p) {
