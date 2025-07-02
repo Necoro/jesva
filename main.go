@@ -112,15 +112,31 @@ func readConfig() *Config {
 	return config
 }
 
+var _debug = false
+
+func debug(format string, args ...any) {
+	if _debug {
+		log.Printf(format, args...)
+	}
+}
+
 func main() {
 	log.SetFlags(0) // no prefix for logging
+	log.SetOutput(os.Stderr)
 
-	if len(os.Args) < 3 {
+	args := os.Args[1:]
+
+	if len(args) >= 1 && args[0] == "-d" {
+		_debug = true
+		args = args[1:]
+	}
+
+	if len(args) < 2 {
 		log.Fatalf("Usage: %s <jes.file> <period>\n\n<period> is either 1-12 for the months, or Q1-Q4 for the quarters", os.Args[0])
 	}
 
-	jesFile := os.Args[1]
-	periodStr := os.Args[2]
+	jesFile := args[0]
+	periodStr := args[1]
 
 	var period Period
 	if periodStr[0] == 'q' || periodStr[0] == 'Q' {
