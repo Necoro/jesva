@@ -106,9 +106,10 @@ func (p *Payment) getValue() Cents {
 		return p.Amount.value
 	}
 
-	left, right, found := strings.Cut(p.Amount.Value, ".")
-	if !found {
-		right = "00"
+	left, right, _ := strings.Cut(p.Amount.Value, ".")
+	if len(right) < 2 {
+		// trailing zeroes
+		right = right + strings.Repeat("0", 2-len(right))
 	}
 
 	ival, err := strconv.Atoi(left + right)
