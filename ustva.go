@@ -132,7 +132,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 
 		val := jesData.ReceiptSum(m.account, m.typ, period)
 		if val != 0 {
-			debug("Kz %d: %s", m.kz, val)
+			debug("\t=> Kz %02d:\t%s", m.kz, val)
 			kz, ok := ustva.Kennzahlen[m.kz]
 			if ok {
 				kz.amount += val

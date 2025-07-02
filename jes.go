@@ -13,14 +13,18 @@ import (
 
 type Cents int64
 
+func (c Cents) Format(fmtStr string) string {
+	eur, cts := c.AsEuro()
+	return fmt.Sprintf(fmtStr, eur, cts)
+}
+
 func (c Cents) AsEuro() (int64, int64) {
 	i := int64(c)
 	return i / 100, i % 100
 }
 
 func (c Cents) String() string {
-	eur, cts := c.AsEuro()
-	return fmt.Sprintf("%d.%02d EUR", eur, cts)
+	return c.Format("%d.%02d EUR")
 }
 
 type SumType uint8
@@ -202,7 +206,7 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 			log.Fatalf("Unexpected SumType: %v", sumType)
 		}
 
-		debug("Kto %d/%d: %s", account, p.Account, diff)
+		debug("Kto %02d/%02d:\t%s", account, p.Account, diff.Format("%3d.%02d EUR"))
 		sum += diff
 	}
 
