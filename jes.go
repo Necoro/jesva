@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"encoding/xml"
+	"fmt"
 	"iter"
 	"log"
 	"math"
@@ -10,7 +11,17 @@ import (
 	"strings"
 )
 
-type Cents = int64
+type Cents int64
+
+func (c Cents) AsEuro() (int64, int64) {
+	i := int64(c)
+	return i / 100, i % 100
+}
+
+func (c Cents) String() string {
+	eur, cts := c.AsEuro()
+	return fmt.Sprintf("%d.%02d EUR", eur, cts)
+}
 
 type SumType uint8
 
@@ -41,6 +52,7 @@ type Date struct {
 }
 
 type Receipt struct {
+	Number   int        `xml:"number"`
 	Date     Date       `xml:"date"`
 	Paid     bool       `xml:"paid,attr"`
 	Payments []*Payment `xml:"payment"`
@@ -178,16 +190,20 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 
 	var sum Cents
 	for p := range e.payments(account, period) {
+		var diff Cents
 		switch sumType {
 		case Amount:
-			sum += p.getAmount(acc.Percent)
+			diff = p.getAmount(acc.Percent)
 		case Tax:
-			sum += p.getTax(acc.Percent)
+			diff = p.getTax(acc.Percent)
 		case Ignore:
 			return 0
 		default:
 			log.Fatalf("Unexpected SumType: %v", sumType)
 		}
+
+		debug("Kto %d/%d: %s", account, p.Account, diff)
+		sum += diff
 	}
 
 	return sum

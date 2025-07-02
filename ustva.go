@@ -106,13 +106,12 @@ type Kennzahl struct {
 type Kennzahlen map[int]Kennzahl
 
 func (k Kennzahl) amountString() string {
-	integer := k.amount / 100
+	euro, cents := k.amount.AsEuro()
 
 	if k.withFraction {
-		frac := k.amount % 100
-		return fmt.Sprintf("%d.%02d", integer, frac)
+		return fmt.Sprintf("%d.%02d", euro, cents)
 	} else {
-		return fmt.Sprintf("%d", integer)
+		return fmt.Sprintf("%d", euro)
 	}
 }
 
@@ -133,6 +132,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 
 		val := jesData.ReceiptSum(m.account, m.typ, period)
 		if val != 0 {
+			debug("Kz %d: %s", m.kz, val)
 			kz, ok := ustva.Kennzahlen[m.kz]
 			if ok {
 				kz.amount += val
