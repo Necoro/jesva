@@ -10,12 +10,17 @@ Leider bietet es (derzeit) noch keinen XML-Export für die UStVA an. Dieses Tool
 ### Verwendung
 
 ```
-jesva jes-datei.eux monat > ustva_monat.xml
+jesva jes-datei.eux zeitraum > ustva_monat.xml
 ```
 
-`monat` kann dabei ein Monat (1-12) oder ein Quartal (Q1-Q4) sein.
+`zeitraum` kennt dabei mehrere Formate:
+* Monat (1-12)
+* Quartal (Q1-Q4)
+* Monatszeitraum (`start`-`ende`, z.B. `3-5`). **NB**: Das wird sehr selten gebraucht werden und hat auch in den
+UStVA-Zeiträumen keine Entsprechung. In der UStVA angedruckt wird `ende`. 
 
-**Wichtig**: Für die UStVA werden Daten benötigt, die im JES nicht vorliegen. Diese müssen in einer Datei `config.json` im aktuellen Verzeichnis abgelegt sein. Für Details siehe die [config.example.json](./config.example.json).
+**Wichtig**: Für die UStVA werden Daten benötigt, die im JES nicht vorliegen. Diese müssen in einer Datei `config.json` 
+oder `jesva.json` im aktuellen Verzeichnis abgelegt sein. Für Details siehe die [config.example.json](./config.example.json).
 
 ### Installation
 
@@ -23,7 +28,7 @@ jesva jes-datei.eux monat > ustva_monat.xml
 
 Alternativ:
 ```  
-git clone github.com/Necoro/jesva
+git clone https://github.com/Necoro/jesva
 cd jesva  
 go build
 ```
