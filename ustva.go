@@ -150,7 +150,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 }
 
 // MarshalXML converts the Kennzahlen map into the <KzXY> structure.
-func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+func (k Kennzahlen) MarshalXML(e *xml.Encoder, _ xml.StartElement) error {
 	sortedKeys := slices.Sorted(maps.Keys(k))
 
 	for _, key := range sortedKeys {
@@ -161,7 +161,7 @@ func (k Kennzahlen) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 		amount := val.amountString()
 
 		e.EncodeToken(se)
-		e.EncodeToken(xml.CharData([]byte(amount)))
+		e.EncodeToken(xml.CharData(amount))
 		e.EncodeToken(se.End())
 	}
 	return nil
