@@ -51,9 +51,17 @@ func (m Month) String() string {
 	return fmt.Sprintf("%02d", m)
 }
 
+func parseMonth(str string) Month {
+	month, err := strconv.ParseUint(str, 10, 8)
+	if err != nil || month < 1 || month > 12 {
+		log.Fatalf("Invalid month: %s (%v)", str, err)
+	}
+	return Month(month)
+}
+
 type Months struct {
-	start uint8
-	end   uint8
+	start Month
+	end   Month
 }
 
 func (m Months) includes(d Date) bool {
@@ -139,7 +147,7 @@ func main() {
 	periodStr := args[1]
 
 	var period Period
-	if periodStr[0] == 'q' || periodStr[0] == 'Q' {
+	if periodStr[0] == 'q' || periodStr[0] == 'Q' { // Quarter
 		switch periodStr[1] {
 		case '1':
 			period = Q1
@@ -152,32 +160,17 @@ func main() {
 		default:
 			log.Fatalf("Unknown quarter '%s'", periodStr)
 		}
-	} else if idx := strings.IndexRune(periodStr, '-'); idx > 0 {
-		start := periodStr[:idx]
-		end := periodStr[idx+1:]
+	} else if startStr, endStr, found := strings.Cut(periodStr, "-"); found { // Month range
+		start := parseMonth(startStr)
+		end := parseMonth(endStr)
 
-		startI, err := strconv.Atoi(start)
-		if err != nil || startI < 1 || startI > 12 {
-			log.Fatalf("Invalid month: %s (%v)", start, err)
-		}
-		endI, err := strconv.Atoi(end)
-		if err != nil || endI < 1 || endI > 12 {
-			log.Fatalf("Invalid month: %s (%v)", end, err)
-		}
-
-		if endI <= startI {
+		if end <= start {
 			log.Fatalf("End month must be larger than starting month.")
 		}
 
-		period = Months{uint8(startI), uint8(endI)}
-
-	} else {
-		month, err := strconv.Atoi(periodStr)
-		if err != nil || month < 1 || month > 12 {
-			log.Fatalf("Invalid month: %s (%v)", periodStr, err)
-		}
-
-		period = Month(month)
+		period = Months{start, end}
+	} else { // single month
+		period = parseMonth(periodStr)
 	}
 
 	conf := readConfig()
