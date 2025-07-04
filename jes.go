@@ -43,7 +43,7 @@ type Eur struct {
 	TaxID       string           `xml:"general>taxid"`
 	Start       Date             `xml:"general>businessyearrange>daterange>start>date"`
 	End         Date             `xml:"general>businessyearrange>daterange>end>date"`
-	Receipts    []Receipt        `xml:"receipts>receipt"`
+	Receipts    []*Receipt       `xml:"receipts>receipt"`
 	Accounts    []Accounts       `xml:"accounts"`
 	AccountInfo map[int]*Account `xml:"-"`
 	TaxAccounts map[int]struct{} `xml:"-"`
@@ -71,6 +71,7 @@ type Payment struct {
 		Value       string `xml:",chardata"`
 		value       Cents
 	} `xml:"amount"`
+	receipt *Receipt // link back
 }
 
 type Accounts struct {
@@ -206,7 +207,7 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 			log.Fatalf("Unexpected SumType: %v", sumType)
 		}
 
-		debug("Kto %02d/%02d:\t%s", account, p.Account, diff.Format("%3d.%02d EUR"))
+		debug("Kto %02d/%02d (#%d):\t%s", account, p.Account, p.receipt.Number, diff.Format("%3d.%02d EUR"))
 		sum += diff
 	}
 
@@ -238,6 +239,7 @@ func (e *Eur) Validate() {
 		for _, p := range r.Payments {
 			checkFn(p.Incoming)
 			checkFn(p.Outgoing)
+			p.receipt = r
 		}
 	}
 }
