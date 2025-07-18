@@ -36,17 +36,17 @@ const (
 )
 
 type Eur struct {
-	XmlName     xml.Name         `xml:"eur"`
-	Name        string           `xml:"general>name"`
-	Address     string           `xml:"general>address"`
-	Company     string           `xml:"general>company"`
-	TaxID       string           `xml:"general>taxid"`
-	Start       Date             `xml:"general>businessyearrange>daterange>start>date"`
-	End         Date             `xml:"general>businessyearrange>daterange>end>date"`
-	Receipts    []*Receipt       `xml:"receipts>receipt"`
-	Accounts    []Accounts       `xml:"accounts"`
-	AccountInfo map[int]*Account `xml:"-"`
-	TaxAccounts map[int]struct{} `xml:"-"`
+	XmlName     xml.Name   `xml:"eur"`
+	Name        string     `xml:"general>name"`
+	Address     string     `xml:"general>address"`
+	Company     string     `xml:"general>company"`
+	TaxID       string     `xml:"general>taxid"`
+	Start       Date       `xml:"general>businessyearrange>daterange>start>date"`
+	End         Date       `xml:"general>businessyearrange>daterange>end>date"`
+	Receipts    []*Receipt `xml:"receipts>receipt"`
+	Accounts    []Accounts `xml:"accounts"`
+	accountInfo map[int]Account
+	taxAccounts map[int]struct{}
 }
 
 type Date struct {
@@ -92,21 +92,21 @@ func (e *Eur) Year() int {
 }
 
 // prepareAccountInfo consolidates the information on tax accounts into
-// the `AccountInfo` map
+// the `accountInfo` map
 func (e *Eur) prepareAccountInfo() {
-	e.AccountInfo = make(map[int]*Account)
-	e.TaxAccounts = make(map[int]struct{})
+	e.accountInfo = make(map[int]Account)
+	e.taxAccounts = make(map[int]struct{})
 
 	for _, a := range e.Accounts {
 		switch a.Type {
 		case "tax":
 			for _, a := range a.Accounts {
-				e.AccountInfo[a.Number] = &a
+				e.accountInfo[a.Number] = a
 			}
 		case "booking":
 			for _, a := range a.Accounts {
 				if a.TaxAccount {
-					e.TaxAccounts[a.Number] = struct{}{}
+					e.taxAccounts[a.Number] = struct{}{}
 				}
 			}
 		}
@@ -174,7 +174,7 @@ func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
 		for _, r := range e.Receipts {
 			if r.Paid && period.includes(r.Date) {
 				for _, p := range r.Payments {
-					_, isTaxAccount := e.TaxAccounts[p.Account]
+					_, isTaxAccount := e.taxAccounts[p.Account]
 					if (p.Incoming == account || p.Outgoing == account) && !isTaxAccount {
 						if !yield(p) {
 							return
@@ -188,8 +188,8 @@ func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
 
 // ReceiptSum gathers the sum of all relevant receipts for that account.
 func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
-	acc := e.AccountInfo[account]
-	if acc == nil {
+	acc, ok := e.accountInfo[account]
+	if !ok {
 		log.Fatalf("No info found for account %d", account)
 	}
 
