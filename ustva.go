@@ -43,6 +43,11 @@ var mappings = []Mapping{
 	{67, 200, Tax},
 	// Leistungsempfänger schuldet USt
 	{60, 610, Amount},
+	// Innergemeinschaftlicher Erwerb
+	{89, 650, Amount},
+	{93, 655, Amount},
+	{61, 250, Tax},
+	{61, 255, Tax},
 	// TODO: Einfuhrumsatzsteuer
 }
 
