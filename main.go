@@ -140,7 +140,15 @@ func main() {
 	}
 
 	if len(args) < 2 {
-		log.Fatalf("Usage: %s <jes.file> <period>\n\n<period> is either 1-12 for the months, or Q1-Q4 for the quarters", os.Args[0])
+		log.Fatalf(`Usage: %s [options] <jes.file> <period>
+
+<period> is either:
+	* 1,...,12 for a month
+	* Q1,...,Q4 for a quarter
+
+Possible options:
+	-d: Enable debug output
+`, os.Args[0])
 	}
 
 	jesFile := args[0]

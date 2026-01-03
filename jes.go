@@ -20,7 +20,13 @@ func (c Cents) Format(fmtStr string) string {
 
 func (c Cents) AsEuro() (int64, int64) {
 	i := int64(c)
-	return i / 100, i % 100
+
+	// no abs for int :(
+	cents := i % 100
+	if cents < 0 {
+		cents = -cents
+	}
+	return i / 100, cents
 }
 
 func (c Cents) String() string {

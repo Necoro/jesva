@@ -137,7 +137,6 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 
 		val := jesData.ReceiptSum(m.account, m.typ, period)
 		if val != 0 {
-			debug("\t\t=> Kz %02d:\t%s", m.kz, val)
 			kz, ok := ustva.Kennzahlen[m.kz]
 			if ok {
 				kz.amount += val
@@ -147,6 +146,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 					amount:       val,
 				}
 			}
+			debug("\t\t=> Kz %02d:\t%s\t(= %s)", m.kz, val, kz.amountString())
 			ustva.Kennzahlen[m.kz] = kz
 		}
 	}
@@ -238,16 +238,16 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period) {
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
 
-	// start with header
-	if _, err := io.WriteString(w, header); err != nil {
-		log.Fatalf("Writing XML: %v", err)
-	}
-
 	// fill data
 	a := anmeldungForYear(jesData.Year())
 	a.Datenlieferant = fillDatenlieferant(conf, jesData)
 	a.Unternehmer = fillUnternehmer(conf, jesData)
 	a.UStVA = fillUStVA(conf, jesData, period)
+
+	// write the header
+	if _, err := io.WriteString(w, header); err != nil {
+		log.Fatalf("Writing XML: %v", err)
+	}
 
 	// encode to XML
 	xmlEncoder := xml.NewEncoder(w)
