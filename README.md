@@ -10,7 +10,7 @@ Leider bietet es (derzeit) noch keinen XML-Export für die UStVA an. Dieses Tool
 ### Verwendung
 
 ```
-jesva jes-datei.eux zeitraum > ustva_monat.xml
+jesva [Optionen] jes-datei.eux zeitraum > ustva_monat.xml
 ```
 
 `zeitraum` kennt dabei mehrere Formate:
@@ -21,6 +21,11 @@ UStVA-Zeiträumen keine Entsprechung. In der UStVA angedruckt wird `ende`.
 
 **Wichtig**: Für die UStVA werden Daten benötigt, die im JES nicht vorliegen. Diese müssen in einer Datei `config.json` 
 oder `jesva.json` im aktuellen Verzeichnis abgelegt sein. Für Details siehe die [config.example.json](./config.example.json).
+
+#### Optionen
+
+ * -d: Debug-Modus
+ * -svz Betrag: Berücksichtige eine entsprechende Sondervorauszahlung in der Höhe.
 
 ### Installation
 

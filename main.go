@@ -134,9 +134,27 @@ func main() {
 
 	args := os.Args[1:]
 
-	if len(args) >= 1 && args[0] == "-d" {
-		_debug = true
-		args = args[1:]
+	var svz Cents
+cmdparsing:
+	for len(args) >= 1 && len(args[0]) > 0 && args[0][0] == '-' {
+		switch args[0] {
+		case "-d":
+			_debug = true
+			args = args[1:]
+		case "-svz":
+			if len(args) < 2 || len(args[1]) == 0 {
+				log.Fatalf("Missing amount for -svz option.")
+			}
+			svzStr := args[1]
+			var err error
+			if svz, err = ParseCents(svzStr); err != nil {
+				log.Fatalf("Parsing -svz option: %v", err)
+			}
+
+			args = args[2:]
+		default:
+			break cmdparsing
+		}
 	}
 
 	if len(args) < 2 {
@@ -148,6 +166,7 @@ func main() {
 
 Possible options:
 	-d: Enable debug output
+	-svz amount: Take into account a Sondervorauszahlung.
 `, os.Args[0])
 	}
 
@@ -185,5 +204,5 @@ Possible options:
 	jes := readJesFile(jesFile)
 	jes.Validate()
 
-	BuildVatFile(conf, jes, period)
+	BuildVatFile(conf, jes, period, svz)
 }

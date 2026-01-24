@@ -54,6 +54,11 @@ var mappings = []Mapping{
 	// TODO: Einfuhrumsatzsteuer
 }
 
+const (
+	// Sondervorauszahlung
+	KzSvz = 39
+)
+
 // as defined by Elster
 const header = `<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>` + "\n"
 
@@ -124,7 +129,7 @@ func (k Kennzahl) amountString() string {
 }
 
 // fillUStVA generates the content for the UStVA fields by processing the JES receipts.
-func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
+func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
 	ustva := UStVA{
 		Jahr:         jesData.Year(),
 		Zeitraum:     period.String(),
@@ -152,6 +157,12 @@ func fillUStVA(conf *Config, jesData *Eur, period Period) UStVA {
 			debug("\t\t=> Kz %02d:\t%s\t(= %s)", m.kz, val, kz.amountString())
 			ustva.Kennzahlen[m.kz] = kz
 		}
+	}
+
+	if svz != 0 {
+		kz := Kennzahl{withFraction: true, amount: svz}
+		ustva.Kennzahlen[KzSvz] = kz
+		debug("\t\t=> Kz %02d:\t%s\t(= %s)", KzSvz, svz, kz.amountString())
 	}
 
 	return ustva
@@ -236,7 +247,7 @@ func fillUnternehmer(conf *Config, jesData *Eur) Unternehmer {
 }
 
 // WriteVatFile writes the UStVA XML to the given Writer.
-func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period) {
+func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Cents) {
 	// ISO-8859-15 is requested
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
@@ -245,7 +256,7 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period) {
 	a := anmeldungForYear(jesData.Year())
 	a.Datenlieferant = fillDatenlieferant(conf, jesData)
 	a.Unternehmer = fillUnternehmer(conf, jesData)
-	a.UStVA = fillUStVA(conf, jesData, period)
+	a.UStVA = fillUStVA(conf, jesData, period, svz)
 
 	// write the header
 	if _, err := io.WriteString(w, header); err != nil {
@@ -263,6 +274,6 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period) {
 }
 
 // BuildVatFile prints the UStVA XML to Stdout.
-func BuildVatFile(conf *Config, jesData *Eur, period Period) {
-	WriteVatFile(os.Stdout, conf, jesData, period)
+func BuildVatFile(conf *Config, jesData *Eur, period Period, svz Cents) {
+	WriteVatFile(os.Stdout, conf, jesData, period, svz)
 }
