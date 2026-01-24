@@ -29,7 +29,10 @@ var mappings = []Mapping{
 	// Steuerpflichtige Umsätze 7%
 	{83, 510, Amount},
 	// Steuerpflichtige Umsätze 0%
-	{87, 520, Amount},
+	// This is not reproduced in JES, as there is a difference between taxed with 0% and taxfree.
+	// Account 520 is used for taxfree, and is therefore not applicable here.
+	// USt 0% (Steuerfrei) --> Ignore
+	{0, 520, Ignore},
 	// VSt 19%
 	{66, 100, Tax},
 	// VSt 7%
