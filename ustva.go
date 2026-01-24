@@ -23,6 +23,8 @@ type Mapping struct {
 	typ     SumType
 }
 
+const MinExpenseAccount = 500
+
 var mappings = []Mapping{
 	// Steuerpflichtige Umsätze 19%
 	{81, 500, Amount},
@@ -125,6 +127,14 @@ func (k Kennzahl) amountString() string {
 		return fmt.Sprintf("%d.%02d", euro, cents)
 	} else {
 		return fmt.Sprintf("%d", euro)
+	}
+}
+
+func (k Kennzahl) relevantAmount() Cents {
+	if k.withFraction {
+		return k.amount
+	} else {
+		return k.amount.FullEuros()
 	}
 }
 
@@ -271,6 +281,68 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Ce
 	if err := xmlEncoder.Encode(a); err != nil {
 		log.Fatalf("Error encoding XML: %v", err)
 	}
+
+	sum := CalculateVatSum(jesData, a.UStVA.Kennzahlen)
+	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s", sum)
+	if svz != 0 {
+		fmt.Fprintf(os.Stderr, " (observing SVZ: %s)", sum-svz)
+	}
+	fmt.Fprintf(os.Stderr, " ***\n")
+}
+
+func cleanedMappings() []Mapping {
+	m := slices.Clone(mappings)
+
+	taxMappings := make(map[int]struct{})
+	for _, m := range m {
+		if m.typ == Tax {
+			taxMappings[m.account] = struct{}{}
+		}
+	}
+
+	return slices.DeleteFunc(m, func(m Mapping) bool {
+		if m.typ == Ignore {
+			return true
+		}
+
+		if _, ok := taxMappings[m.account]; ok && m.typ == Amount {
+			return true
+		}
+
+		return false
+	})
+}
+
+func CalculateVatSum(jesData *Eur, kennzahlen Kennzahlen) Cents {
+	var sum Cents
+
+	seen := make(map[int]struct{})
+
+	for _, m := range cleanedMappings() {
+		if _, ok := seen[m.kz]; ok {
+			continue
+		}
+		seen[m.kz] = struct{}{}
+
+		if kz, ok := kennzahlen[m.kz]; ok {
+			var amt Cents
+			if m.typ == Tax {
+				amt = kz.relevantAmount()
+			} else {
+				perc := jesData.accountInfo[m.account].Percent
+				amt = kz.relevantAmount().Percentage(perc)
+			}
+
+			if m.account < MinExpenseAccount {
+				amt = -amt
+			}
+
+			debug("* %d => %s", m.kz, amt)
+
+			sum += amt
+		}
+	}
+	return sum
 }
 
 // BuildVatFile prints the UStVA XML to Stdout.

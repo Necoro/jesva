@@ -3,64 +3,11 @@ package main
 import (
 	"archive/zip"
 	"encoding/xml"
-	"fmt"
 	"iter"
 	"log"
-	"math"
 	"strconv"
 	"strings"
 )
-
-type Cents int64
-
-func (c Cents) Format(fmtStr string) string {
-	eur, cts := c.AsEuro()
-	return fmt.Sprintf(fmtStr, eur, cts)
-}
-
-func (c Cents) AsEuro() (int64, int64) {
-	i := int64(c)
-
-	// no abs for int :(
-	cents := i % 100
-	if cents < 0 {
-		cents = -cents
-	}
-	return i / 100, cents
-}
-
-func (c Cents) String() string {
-	return c.Format("%d.%02d EUR")
-}
-
-func parseCents(eurStr, centsStr string) (Cents, error) {
-	var eur, cents int
-	var err error
-
-	if eur, err = strconv.Atoi(eurStr); err != nil {
-		return 0, fmt.Errorf("parsing euro: %w", err)
-	}
-	if centsStr != "" {
-		if cents, err = strconv.Atoi(centsStr); err != nil {
-			return 0, fmt.Errorf("parsing cents: %w", err)
-		}
-	}
-
-	return Cents(eur*100 + cents), nil
-}
-
-func ParseCents(str string) (Cents, error) {
-	if eurStr, centsStr, found := strings.Cut(str, "."); found && len(centsStr) == 2 {
-		return parseCents(eurStr, centsStr)
-	}
-	if eurStr, centsStr, found := strings.Cut(str, ","); found && len(centsStr) == 2 {
-		return parseCents(eurStr, centsStr)
-	}
-	if !strings.ContainsAny(str, ",.") {
-		return parseCents(str, "")
-	}
-	return 0, fmt.Errorf("invalid format: '%s'", str)
-}
 
 type SumType uint8
 
@@ -173,17 +120,15 @@ func (p *Payment) getValue() Cents {
 	return p.Amount.value
 }
 
-// getAmount returns the gross amount of this Payment, i.e. without taxes.
-func (p *Payment) getAmount(perc int) Cents {
+// getNetAmount returns the net amount of this Payment, i.e. without taxes.
+func (p *Payment) getNetAmount(perc int) Cents {
 	val := p.getValue()
 
 	if !p.isIncludingTax() || perc == 0 {
 		return val
 	}
 
-	factor := float64(perc)/100 + 1
-	amt := math.Round(float64(val) / factor)
-	return Cents(amt)
+	return val.NetAmount(perc)
 }
 
 // getTax returns the taxes of this Payment.
@@ -195,13 +140,11 @@ func (p *Payment) getTax(perc int) Cents {
 	val := p.getValue()
 
 	if p.isIncludingTax() {
-		amt := p.getAmount(perc)
+		amt := p.getNetAmount(perc)
 		return val - amt
 	}
 
-	factor := float64(perc) / 100
-	tax := math.Round(float64(val) * factor)
-	return Cents(tax)
+	return val.Percentage(perc)
 }
 
 func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
@@ -233,7 +176,7 @@ func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
 		var diff Cents
 		switch sumType {
 		case Amount:
-			diff = p.getAmount(acc.Percent)
+			diff = p.getNetAmount(acc.Percent)
 		case Tax:
 			diff = p.getTax(acc.Percent)
 		case Ignore:
