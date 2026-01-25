@@ -266,9 +266,9 @@ func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
 	}
 
 	if svz != 0 {
-		kz := Kennzahl{withFraction: true, amount: svz}
+		kz := Kennzahl{withFraction: true, amount: svz, typ: Tax, account: 0}
 		ustva.Kennzahlen.Merge(KzSvz, kz)
-		debug("\t\t=> Kz %02d:\t%s\t(= %s)", KzSvz, svz, kz.amountString())
+		debug("\t=> Kz %02d (SVZ):\t\t\t%s\t(= %s)", KzSvz, svz, kz.amountString())
 	}
 
 	return ustva
@@ -379,11 +379,7 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Ce
 	}
 
 	taxSum := a.UStVA.Kennzahlen.TaxSum()
-	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s", taxSum)
-	if svz != 0 {
-		fmt.Fprintf(os.Stderr, " (observing SVZ: %s)", taxSum-svz)
-	}
-	fmt.Fprintf(os.Stderr, " ***\n")
+	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s ***\n", taxSum)
 }
 
 // BuildVatFile prints the UStVA XML to Stdout.
