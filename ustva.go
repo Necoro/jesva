@@ -71,8 +71,6 @@ var mappings = []Mapping{
 	{47, 600, Tax},
 	// §13b UStG VSt
 	{67, 200, Tax},
-	// Leistungsempfänger schuldet USt
-	{60, 610, Amount},
 	// Innergemeinschaftlicher Erwerb
 	{89, 650, Amount},
 	{93, 655, Amount},
