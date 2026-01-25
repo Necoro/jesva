@@ -23,7 +23,13 @@ type Mapping struct {
 	typ     SumType
 }
 
-const MinExpenseAccount = 500
+const (
+	// NA is used for accounts that are not mapped.
+	NA = 0
+	// MinExpenseAccount is the lowest tax account number that is considered an expense.
+	// All accounts below this number are considered income.
+	MinExpenseAccount = 500
+)
 
 var mappings = []Mapping{
 	// Steuerpflichtige Umsätze 19%
@@ -34,13 +40,13 @@ var mappings = []Mapping{
 	// This is not reproduced in JES, as there is a difference between taxed with 0% and taxfree.
 	// Account 520 is used for taxfree, and is therefore not applicable here.
 	// USt 0% (Steuerfrei) --> Ignore
-	{0, 520, Ignore},
+	{NA, 520, Ignore},
 	// VSt 19%
 	{66, 100, Tax},
 	// VSt 7%
 	{66, 110, Tax},
 	// Vst 0% --> Ignore
-	{0, 120, Ignore},
+	{NA, 120, Ignore},
 	// §13b UStG USt
 	{46, 600, Amount},
 	{47, 600, Tax},
@@ -138,15 +144,9 @@ func (k Kennzahl) relevantAmount() Cents {
 	}
 }
 
-// fillUStVA generates the content for the UStVA fields by processing the JES receipts.
-func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
-	ustva := UStVA{
-		Jahr:         jesData.Year(),
-		Zeitraum:     period.String(),
-		Steuernummer: conf.UStNr,
-		WIdNr:        conf.WIdNr,
-		Kennzahlen:   make(map[int]Kennzahl),
-	}
+// kennzahlenFromJES processes the JES receipts and calculates the Kennzahlen fields of the UStVA form.
+func kennzahlenFromJES(jesData *Eur, period Period) Kennzahlen {
+	kennzahlen := make(Kennzahlen)
 
 	for _, m := range mappings {
 		if m.typ == Ignore {
@@ -155,7 +155,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
 
 		val := jesData.ReceiptSum(m.account, m.typ, period)
 		if val != 0 {
-			kz, ok := ustva.Kennzahlen[m.kz]
+			kz, ok := kennzahlen[m.kz]
 			if ok {
 				kz.amount += val
 			} else {
@@ -165,8 +165,21 @@ func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
 				}
 			}
 			debug("\t\t=> Kz %02d:\t%s\t(= %s)", m.kz, val, kz.amountString())
-			ustva.Kennzahlen[m.kz] = kz
+			kennzahlen[m.kz] = kz
 		}
+	}
+
+	return kennzahlen
+}
+
+// fillUStVA generates the content for the UStVA fields.
+func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
+	ustva := UStVA{
+		Jahr:         jesData.Year(),
+		Zeitraum:     period.String(),
+		Steuernummer: conf.UStNr,
+		WIdNr:        conf.WIdNr,
+		Kennzahlen:   kennzahlenFromJES(jesData, period),
 	}
 
 	if svz != 0 {
