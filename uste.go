@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -22,6 +23,13 @@ func (l UStELine) String() string {
 		return fmt.Sprintf("%02d/%02d", l/100, l%100)
 	}
 	return fmt.Sprintf("%02d   ", l) // three trailing spaces to accomodate for the optional fields
+}
+
+func (l UStELine) line() int {
+	if l > 1000 {
+		return int(l / 100)
+	}
+	return int(l)
 }
 
 // UnmarshalXML implements xml.Unmarshaler.
@@ -92,7 +100,7 @@ func readUStVAXml(xmlFile string) Kennzahlen {
 	return anmeldung.UStVA.Kennzahlen
 }
 
-func OutputUStE(jes *Eur, period Period, xmls []string, svz Cents) {
+func OutputUStE(jes *Eur, period Period, xmls []string) {
 	ustvas := make([]Kennzahlen, len(xmls))
 	for i, xmlFile := range xmls {
 		ustvas[i] = readUStVAXml(xmlFile)
@@ -127,39 +135,30 @@ func OutputUStE(jes *Eur, period Period, xmls []string, svz Cents) {
 			continue
 		}
 
-		vz := combinedKz[m.kz]
-		fy := fullYearKz[m.kz]
-
-		if vz == nil && fy == nil {
+		_, found := byLine[m.zeile]
+		if found {
 			continue
 		}
 
-		if fy == nil {
-			// should not happen
-			log.Fatalf("Missing full year value for Kennzahl %d", m.kz)
+		vz := combinedKz[m.kz]
+		fy := fullYearKz[m.kz]
+
+		if vz == nil || fy == nil {
+			if (vz == nil) != (fy == nil) {
+				// should not happen
+				log.Panicf("Inconsistent data for Kennzahl %d", m.kz)
+			}
+			continue
 		}
 
-		line, found := byLine[m.zeile]
-		if found {
-			line.fy.amount += fy.amount
-			if vz != nil {
-				line.vz.amount += vz.amount
-			}
-		} else {
-			fyCopy := *fy
-
-			if vz != nil {
-				vzCopy := *vz
-				line = lineKz{fy: &fyCopy, vz: &vzCopy}
-			} else {
-				line = lineKz{fy: &fyCopy, vz: nil}
-			}
-		}
-
-		byLine[m.zeile] = line
+		fyCopy := *fy
+		vzCopy := *vz
+		byLine[m.zeile] = lineKz{fy: &fyCopy, vz: &vzCopy}
 	}
 
-	lines := slices.Sorted(maps.Keys(byLine))
+	lines := slices.SortedFunc(maps.Keys(byLine), func(line, line2 UStELine) int {
+		return cmp.Compare(line.line(), line2.line())
+	})
 
 	for _, zeile := range lines {
 		line := byLine[zeile]
@@ -170,7 +169,7 @@ func OutputUStE(jes *Eur, period Period, xmls []string, svz Cents) {
 		return &Kennzahl{typ: Tax, amount: amt, withFraction: true}
 	}
 
-	printLine(sumKz(fySum), sumKz(vzSum), 999)
+	printLine(sumKz(vzSum), sumKz(fySum), 119)
 }
 
 func printLine(fullYear *Kennzahl, vz *Kennzahl, zeile UStELine) {
@@ -180,14 +179,14 @@ func printLine(fullYear *Kennzahl, vz *Kennzahl, zeile UStELine) {
 		delta = fullYear.relevantAmount() - vz.relevantAmount()
 	}
 
-	fmt.Printf(" %s\t=>\t%s", zeile, fullYear.relevantAmount().Format("%5d.%02d EUR"))
+	fmt.Printf(" %s\t=>\t%s", zeile, fullYear.relevantAmount().Format("%5d,%02d EUR"))
 
 	if fullYear.typ == Amount {
-		fmt.Printf("\t(%s", fullYear.taxAmount())
+		fmt.Printf("\t(%s", fullYear.taxAmount().Format("%5d,%02d EUR"))
 	}
 
 	if delta != 0 {
-		fmt.Printf("\tΔ %s", delta)
+		fmt.Printf("\tΔ %s", delta.Format("%d,%02d EUR"))
 	}
 
 	if fullYear.typ == Amount {

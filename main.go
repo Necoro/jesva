@@ -157,7 +157,7 @@ Additionally, there exists the year-end mode:
 	if _, ok := period.(Year); ok {
 		// UStE
 		xmls := args[2:]
-		OutputUStE(jes, period, xmls, svz)
+		OutputUStE(jes, period, xmls)
 	} else {
 		// UStVA
 		BuildVatFile(conf, jes, period, svz)

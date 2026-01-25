@@ -62,9 +62,9 @@ var mappings = []Mapping{
 	// USt 0% (Steuerfrei) --> Ignore
 	{NA, NA, 520, Ignore},
 	// VSt 19%
-	{66, 80, 100, Tax},
+	{66, 79, 100, Tax},
 	// VSt 7%
-	{66, 80, 110, Tax},
+	{66, 79, 110, Tax},
 	// Vst 0% --> Ignore
 	{NA, NA, 120, Ignore},
 	// §13b UStG USt
