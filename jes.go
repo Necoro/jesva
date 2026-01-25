@@ -65,16 +65,16 @@ type Account struct {
 
 type TaxAccount uint16
 
-// minExpenseAccount is the lowest tax account number that is considered an expense.
-// All accounts below this number are considered income.
-const minExpenseAccount = 500
+// minIncomeAccount is the lowest tax account number that is considered an expense.
+// All accounts below this number are considered expense.
+const minIncomeAccount = 500
 
 func (t TaxAccount) IsExpense() bool {
-	return t >= minExpenseAccount
+	return !t.IsIncome()
 }
 
 func (t TaxAccount) IsIncome() bool {
-	return !t.IsExpense()
+	return t >= minIncomeAccount
 }
 
 func (e *Eur) Year() int {
