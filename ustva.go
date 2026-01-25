@@ -15,20 +15,39 @@ import (
 	"golang.org/x/text/encoding/charmap"
 )
 
+type SumType uint8
+
+const (
+	Ignore     SumType = iota
+	Amount             // tax is calculated based on the net amount
+	AmountOnly         // no tax calulation, explicitly use the net amount
+	Tax                // tax is exactly the paid taxes
+)
+
+func (s SumType) String() string {
+	switch s {
+	case Ignore:
+		return "Ign"
+	case Amount, AmountOnly:
+		return "Amt"
+	case Tax:
+		return "Tax"
+	default:
+		return "Unknown"
+	}
+}
+
 // Mapping of JES account types to Elster-Kennzahlen.
 // `typ` specifies whether we sum gross amounts or taxes.
 type Mapping struct {
 	kz      int
-	account int
+	account TaxAccount
 	typ     SumType
 }
 
 const (
 	// NA is used for accounts that are not mapped.
 	NA = 0
-	// MinExpenseAccount is the lowest tax account number that is considered an expense.
-	// All accounts below this number are considered income.
-	MinExpenseAccount = 500
 )
 
 var mappings = []Mapping{
@@ -48,7 +67,7 @@ var mappings = []Mapping{
 	// Vst 0% --> Ignore
 	{NA, 120, Ignore},
 	// §13b UStG USt
-	{46, 600, Amount},
+	{46, 600, AmountOnly},
 	{47, 600, Tax},
 	// §13b UStG VSt
 	{67, 200, Tax},
@@ -120,6 +139,9 @@ type UStVA struct {
 type Kennzahl struct {
 	withFraction bool
 	amount       Cents
+	account      TaxAccount
+	percent      int
+	typ          SumType
 }
 
 // Kennzahlen represents all filled fields on the UStVA form.
@@ -144,8 +166,35 @@ func (k Kennzahl) relevantAmount() Cents {
 	}
 }
 
-// kennzahlenFromJES processes the JES receipts and calculates the Kennzahlen fields of the UStVA form.
-func kennzahlenFromJES(jesData *Eur, period Period) Kennzahlen {
+func (k Kennzahl) taxAmount() Cents {
+	switch k.typ {
+	case AmountOnly, Ignore:
+		return 0
+	case Tax:
+		return k.relevantAmount()
+	case Amount:
+		return k.relevantAmount().Percentage(k.percent)
+	}
+	return 0
+}
+
+func (k Kennzahlen) TaxSum() Cents {
+	var sum Cents
+	for id, kz := range k {
+		amt := kz.taxAmount()
+		debug("* %d => %s", id, amt)
+
+		if kz.account.IsExpense() {
+			amt = -amt
+		}
+
+		sum += amt
+	}
+	return sum
+}
+
+// kennzahlenFromVatData processes the JES receipts and calculates the Kennzahlen fields of the UStVA form.
+func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 	kennzahlen := make(Kennzahlen)
 
 	for _, m := range mappings {
@@ -153,18 +202,47 @@ func kennzahlenFromJES(jesData *Eur, period Period) Kennzahlen {
 			continue
 		}
 
-		val := jesData.ReceiptSum(m.account, m.typ, period)
-		if val != 0 {
+		vat, ok := vatData[m.account]
+		if !ok {
+			continue
+		}
+
+		if !vat.Empty() {
+			var val Cents
+			switch m.typ {
+			case Amount, AmountOnly:
+				val = vat.NetAmount
+			case Tax:
+				val = vat.Tax
+			default:
+				log.Fatalf("Unknown sum type %d", m.typ)
+			}
+
 			kz, ok := kennzahlen[m.kz]
 			if ok {
+				// Assertions of consistency
+				if kz.typ != Tax && kz.percent != vat.Percent {
+					log.Fatalf("Inconsistent tax rate for Kz %d: %d vs %d", m.kz, kz.percent, vat.Percent)
+				}
+				if kz.typ != m.typ {
+					log.Fatalf("Inconsistent mapping for Kz %d: %d vs %d", m.kz, kz.typ, m.typ)
+				}
+				if kz.account.IsExpense() != m.account.IsExpense() {
+					log.Fatalf("Expense account mixed with income account for Kz %d", m.kz)
+				}
+
+				// Accumulate
 				kz.amount += val
 			} else {
 				kz = Kennzahl{
 					withFraction: m.typ == Tax,
 					amount:       val,
+					typ:          m.typ,
+					account:      m.account,
+					percent:      vat.Percent,
 				}
 			}
-			debug("\t\t=> Kz %02d:\t%s\t(= %s)", m.kz, val, kz.amountString())
+			debug("\t=> Kz %02d (Kto %d, %s):\t%s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
 			kennzahlen[m.kz] = kz
 		}
 	}
@@ -174,12 +252,13 @@ func kennzahlenFromJES(jesData *Eur, period Period) Kennzahlen {
 
 // fillUStVA generates the content for the UStVA fields.
 func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
+	vatData := jesData.VatData(period)
 	ustva := UStVA{
 		Jahr:         jesData.Year(),
 		Zeitraum:     period.String(),
 		Steuernummer: conf.UStNr,
 		WIdNr:        conf.WIdNr,
-		Kennzahlen:   kennzahlenFromJES(jesData, period),
+		Kennzahlen:   kennzahlenFromVatData(vatData),
 	}
 
 	if svz != 0 {
@@ -295,67 +374,12 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Ce
 		log.Fatalf("Error encoding XML: %v", err)
 	}
 
-	sum := CalculateVatSum(jesData, a.UStVA.Kennzahlen)
-	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s", sum)
+	taxSum := a.UStVA.Kennzahlen.TaxSum()
+	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s", taxSum)
 	if svz != 0 {
-		fmt.Fprintf(os.Stderr, " (observing SVZ: %s)", sum-svz)
+		fmt.Fprintf(os.Stderr, " (observing SVZ: %s)", taxSum-svz)
 	}
 	fmt.Fprintf(os.Stderr, " ***\n")
-}
-
-func cleanedMappings() []Mapping {
-	m := slices.Clone(mappings)
-
-	taxMappings := make(map[int]struct{})
-	for _, m := range m {
-		if m.typ == Tax {
-			taxMappings[m.account] = struct{}{}
-		}
-	}
-
-	return slices.DeleteFunc(m, func(m Mapping) bool {
-		if m.typ == Ignore {
-			return true
-		}
-
-		if _, ok := taxMappings[m.account]; ok && m.typ == Amount {
-			return true
-		}
-
-		return false
-	})
-}
-
-func CalculateVatSum(jesData *Eur, kennzahlen Kennzahlen) Cents {
-	var sum Cents
-
-	seen := make(map[int]struct{})
-
-	for _, m := range cleanedMappings() {
-		if _, ok := seen[m.kz]; ok {
-			continue
-		}
-		seen[m.kz] = struct{}{}
-
-		if kz, ok := kennzahlen[m.kz]; ok {
-			var amt Cents
-			if m.typ == Tax {
-				amt = kz.relevantAmount()
-			} else {
-				perc := jesData.accountInfo[m.account].Percent
-				amt = kz.relevantAmount().Percentage(perc)
-			}
-
-			if m.account < MinExpenseAccount {
-				amt = -amt
-			}
-
-			debug("* %d => %s", m.kz, amt)
-
-			sum += amt
-		}
-	}
-	return sum
 }
 
 // BuildVatFile prints the UStVA XML to Stdout.

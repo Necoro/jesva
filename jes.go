@@ -2,33 +2,27 @@ package main
 
 import (
 	"archive/zip"
+	"cmp"
 	"encoding/xml"
 	"iter"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 )
 
-type SumType uint8
-
-const (
-	Amount SumType = iota
-	Tax
-	Ignore
-)
-
 type Eur struct {
-	XmlName     xml.Name   `xml:"eur"`
-	Name        string     `xml:"general>name"`
-	Address     string     `xml:"general>address"`
-	Company     string     `xml:"general>company"`
-	TaxID       string     `xml:"general>taxid"`
-	Start       Date       `xml:"general>businessyearrange>daterange>start>date"`
-	End         Date       `xml:"general>businessyearrange>daterange>end>date"`
-	Receipts    []*Receipt `xml:"receipts>receipt"`
-	Accounts    []Accounts `xml:"accounts"`
-	accountInfo map[int]Account
-	taxAccounts map[int]struct{}
+	XmlName            xml.Name   `xml:"eur"`
+	Name               string     `xml:"general>name"`
+	Address            string     `xml:"general>address"`
+	Company            string     `xml:"general>company"`
+	TaxID              string     `xml:"general>taxid"`
+	Start              Date       `xml:"general>businessyearrange>daterange>start>date"`
+	End                Date       `xml:"general>businessyearrange>daterange>end>date"`
+	Receipts           []*Receipt `xml:"receipts>receipt"`
+	Accounts           []Accounts `xml:"accounts"`
+	accountInfo        map[TaxAccount]Account
+	taxBookingAccounts map[int]struct{} // accounts where taxes are booked as revenue, e.g. paid taxes
 }
 
 type Date struct {
@@ -45,9 +39,9 @@ type Receipt struct {
 }
 
 type Payment struct {
-	Incoming int `xml:"taxaccountincoming"`
-	Outgoing int `xml:"taxaccountoutgoing"`
-	Account  int `xml:"account"`
+	Incoming TaxAccount `xml:"taxaccountincoming"`
+	Outgoing TaxAccount `xml:"taxaccountoutgoing"`
+	Account  int        `xml:"account"`
 	Amount   struct {
 		TaxHandling string `xml:"tax,attr"`
 		Value       string `xml:",chardata"`
@@ -69,6 +63,20 @@ type Account struct {
 	Percent    int    `xml:"percent"`
 }
 
+type TaxAccount uint16
+
+// minExpenseAccount is the lowest tax account number that is considered an expense.
+// All accounts below this number are considered income.
+const minExpenseAccount = 500
+
+func (t TaxAccount) IsExpense() bool {
+	return t >= minExpenseAccount
+}
+
+func (t TaxAccount) IsIncome() bool {
+	return !t.IsExpense()
+}
+
 func (e *Eur) Year() int {
 	return e.Start.Year
 }
@@ -76,19 +84,19 @@ func (e *Eur) Year() int {
 // prepareAccountInfo consolidates the information on tax accounts into
 // the `accountInfo` map
 func (e *Eur) prepareAccountInfo() {
-	e.accountInfo = make(map[int]Account)
-	e.taxAccounts = make(map[int]struct{})
+	e.accountInfo = make(map[TaxAccount]Account)
+	e.taxBookingAccounts = make(map[int]struct{})
 
 	for _, a := range e.Accounts {
 		switch a.Type {
 		case "tax":
 			for _, a := range a.Accounts {
-				e.accountInfo[a.Number] = a
+				e.accountInfo[TaxAccount(a.Number)] = a
 			}
 		case "booking":
 			for _, a := range a.Accounts {
 				if a.TaxAccount {
-					e.taxAccounts[a.Number] = struct{}{}
+					e.taxBookingAccounts[a.Number] = struct{}{}
 				}
 			}
 		}
@@ -147,13 +155,14 @@ func (p *Payment) getTax(perc int) Cents {
 	return val.Percentage(perc)
 }
 
-func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
+func (e *Eur) payments(period Period) iter.Seq[*Payment] {
 	return func(yield func(*Payment) bool) {
 		for _, r := range e.Receipts {
 			if r.Paid && period.includes(r.Date) {
 				for _, p := range r.Payments {
-					_, isTaxAccount := e.taxAccounts[p.Account]
-					if (p.Incoming == account || p.Outgoing == account) && !isTaxAccount {
+					// tax bookings are not relevant to taxes itself, so we ignore them
+					_, isTaxBookingAccount := e.taxBookingAccounts[p.Account]
+					if !isTaxBookingAccount {
 						if !yield(p) {
 							return
 						}
@@ -164,32 +173,64 @@ func (e *Eur) payments(account int, period Period) iter.Seq[*Payment] {
 	}
 }
 
-// ReceiptSum gathers the sum of all relevant receipts for that account.
-func (e *Eur) ReceiptSum(account int, sumType SumType, period Period) Cents {
-	acc, ok := e.accountInfo[account]
-	if !ok {
-		log.Fatalf("No info found for account %d", account)
+type VatDataEntry struct {
+	Tax       Cents
+	NetAmount Cents
+	Percent   int
+}
+
+func (v VatDataEntry) Empty() bool {
+	return v.Tax == 0 && v.NetAmount == 0
+}
+
+type VatData map[TaxAccount]VatDataEntry
+
+// VatData returns amount and vat amount for each account in the given period.
+func (e *Eur) VatData(period Period) VatData {
+	vatData := make(VatData, len(e.accountInfo))
+
+	type paymentWithAccount struct {
+		*Payment
+		acc TaxAccount
 	}
 
-	var sum Cents
-	for p := range e.payments(account, period) {
-		var diff Cents
-		switch sumType {
-		case Amount:
-			diff = p.getNetAmount(acc.Percent)
-		case Tax:
-			diff = p.getTax(acc.Percent)
-		case Ignore:
-			return 0
-		default:
-			log.Fatalf("Unexpected SumType: %v", sumType)
+	perAccount := func(p paymentWithAccount) {
+		acc := e.accountInfo[p.acc]
+		taxDiff := p.getTax(acc.Percent)
+		amountDiff := p.getNetAmount(acc.Percent)
+
+		debug("Kto %02d/%02d (#%d):\t%s / %s", p.acc, p.Account, p.receipt.Number,
+			amountDiff.Format("%3d.%02d EUR"),
+			taxDiff.Format("%3d.%02d EUR"))
+
+		vd := vatData[p.acc]
+		vd.Tax += taxDiff
+		vd.NetAmount += amountDiff
+		vd.Percent = acc.Percent
+		vatData[p.acc] = vd
+	}
+
+	// to help debugging, we sort the payments by account number and receipt number
+	payments := make([]paymentWithAccount, 0, 100)
+
+	for p := range e.payments(period) {
+		if p.Incoming != 0 {
+			payments = append(payments, paymentWithAccount{p, p.Incoming})
 		}
-
-		debug("Kto %02d/%02d (#%d):\t%s", account, p.Account, p.receipt.Number, diff.Format("%3d.%02d EUR"))
-		sum += diff
+		if p.Outgoing != 0 {
+			payments = append(payments, paymentWithAccount{p, p.Outgoing})
+		}
 	}
 
-	return sum
+	slices.SortFunc(payments, func(a, b paymentWithAccount) int {
+		return cmp.Or(cmp.Compare(a.acc, b.acc), cmp.Compare(a.receipt.Number, b.receipt.Number))
+	})
+
+	for _, p := range payments {
+		perAccount(p)
+	}
+
+	return vatData
 }
 
 func (e *Eur) Validate() {
@@ -198,12 +239,12 @@ func (e *Eur) Validate() {
 	}
 
 	// Check for unsupported tax accounts
-	knownAccounts := make(map[int]struct{})
+	knownAccounts := make(map[TaxAccount]struct{})
 	for _, m := range mappings {
 		knownAccounts[m.account] = struct{}{}
 	}
 
-	checkFn := func(acc int) {
+	checkFn := func(acc TaxAccount) {
 		if acc == 0 { // account not given
 			return
 		}
