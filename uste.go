@@ -34,6 +34,8 @@ func (l UStELine) line() int {
 
 // UnmarshalXML implements xml.Unmarshaler.
 // It expects XML elements of the form <Kz123>45.67</Kz123> and stores the value in the Kennzahlen map.
+//
+//goland:noinspection GoMixedReceiverTypes
 func (k *Kennzahlen) UnmarshalXML(d *xml.Decoder, elem xml.StartElement) error {
 	if elem.Name.Local[0:2] != "Kz" {
 		return fmt.Errorf("unexpected XML element: %s", elem.Name.Local)
