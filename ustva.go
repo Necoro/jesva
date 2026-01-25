@@ -41,6 +41,7 @@ func (s SumType) String() string {
 // `typ` specifies whether we sum gross amounts or taxes.
 type Mapping struct {
 	kz      int
+	zeile   UStELine // UStE Zeile
 	account TaxAccount
 	typ     SumType
 }
@@ -52,30 +53,30 @@ const (
 
 var mappings = []Mapping{
 	// Steuerpflichtige Umsätze 19%
-	{81, 500, Amount},
+	{81, 22, 500, Amount},
 	// Steuerpflichtige Umsätze 7%
-	{83, 510, Amount},
+	{83, 25, 510, Amount},
 	// Steuerpflichtige Umsätze 0%
 	// This is not reproduced in JES, as there is a difference between taxed with 0% and taxfree.
 	// Account 520 is used for taxfree, and is therefore not applicable here.
 	// USt 0% (Steuerfrei) --> Ignore
-	{NA, 520, Ignore},
+	{NA, NA, 520, Ignore},
 	// VSt 19%
-	{66, 100, Tax},
+	{66, 80, 100, Tax},
 	// VSt 7%
-	{66, 110, Tax},
+	{66, 80, 110, Tax},
 	// Vst 0% --> Ignore
-	{NA, 120, Ignore},
+	{NA, NA, 120, Ignore},
 	// §13b UStG USt
-	{46, 600, AmountOnly},
-	{47, 600, Tax},
+	{46, 6501, 600, AmountOnly},
+	{47, 6502, 600, Tax},
 	// §13b UStG VSt
-	{67, 200, Tax},
+	{67, 83, 200, Tax},
 	// Innergemeinschaftlicher Erwerb
-	{89, 650, Amount},
-	{93, 655, Amount},
-	{61, 250, Tax},
-	{61, 255, Tax},
+	{89, 51, 650, Amount},
+	{93, 52, 655, Amount},
+	{61, 80, 250, Tax},
+	{61, 80, 255, Tax},
 	// TODO: Einfuhrumsatzsteuer
 }
 
@@ -126,11 +127,11 @@ type Unternehmer struct {
 
 // UStVA holds the actual tax relevant content.
 type UStVA struct {
-	Jahr         int    `xml:"Jahr"`
-	Zeitraum     string `xml:"Zeitraum"`
-	Steuernummer string `xml:"Steuernummer"`
-	WIdNr        string `xml:"WIdNr,omitempty"`
-	Kennzahlen   Kennzahlen
+	Jahr         int        `xml:"Jahr"`
+	Zeitraum     string     `xml:"Zeitraum"`
+	Steuernummer string     `xml:"Steuernummer"`
+	WIdNr        string     `xml:"WIdNr,omitempty"`
+	Kennzahlen   Kennzahlen `xml:",any"`
 }
 
 // Kennzahl is the content of one field on the UStVA form.
@@ -144,9 +145,9 @@ type Kennzahl struct {
 
 // Kennzahlen represents all filled fields on the UStVA form.
 // It maps the field number to its content.
-type Kennzahlen map[int]Kennzahl
+type Kennzahlen map[int]*Kennzahl
 
-func (k Kennzahl) amountString() string {
+func (k *Kennzahl) amountString() string {
 	euro, cents := k.amount.AsEuro()
 
 	if k.withFraction {
@@ -156,7 +157,7 @@ func (k Kennzahl) amountString() string {
 	}
 }
 
-func (k Kennzahl) relevantAmount() Cents {
+func (k *Kennzahl) relevantAmount() Cents {
 	if k.withFraction {
 		return k.amount
 	} else {
@@ -164,7 +165,7 @@ func (k Kennzahl) relevantAmount() Cents {
 	}
 }
 
-func (k Kennzahl) taxAmount() Cents {
+func (k *Kennzahl) taxAmount() Cents {
 	switch k.typ {
 	case AmountOnly, Ignore:
 		return 0
@@ -174,6 +175,27 @@ func (k Kennzahl) taxAmount() Cents {
 		return k.relevantAmount().Percentage(k.percent)
 	}
 	return 0
+}
+
+func (k Kennzahlen) Merge(id int, kz Kennzahl) {
+	other, ok := k[id]
+	if !ok {
+		k[id] = &kz
+		return
+	}
+
+	// Assertions of consistency
+	if kz.typ != Tax && kz.percent != other.percent {
+		log.Fatalf("Inconsistent tax rate for Kz %d: %d vs %d", id, kz.percent, other.percent)
+	}
+	if kz.typ != other.typ {
+		log.Fatalf("Inconsistent mapping for Kz %d: %d vs %d", id, kz.typ, other.typ)
+	}
+	if kz.account.IsExpense() != other.account.IsExpense() {
+		log.Fatalf("Expense account mixed with income account for Kz %d", id)
+	}
+
+	k[id].amount += kz.amount
 }
 
 func (k Kennzahlen) TaxSum() Cents {
@@ -216,32 +238,16 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 				log.Fatalf("Unknown sum type %d", m.typ)
 			}
 
-			kz, ok := kennzahlen[m.kz]
-			if ok {
-				// Assertions of consistency
-				if kz.typ != Tax && kz.percent != vat.Percent {
-					log.Fatalf("Inconsistent tax rate for Kz %d: %d vs %d", m.kz, kz.percent, vat.Percent)
-				}
-				if kz.typ != m.typ {
-					log.Fatalf("Inconsistent mapping for Kz %d: %d vs %d", m.kz, kz.typ, m.typ)
-				}
-				if kz.account.IsExpense() != m.account.IsExpense() {
-					log.Fatalf("Expense account mixed with income account for Kz %d", m.kz)
-				}
-
-				// Accumulate
-				kz.amount += val
-			} else {
-				kz = Kennzahl{
-					withFraction: m.typ == Tax,
-					amount:       val,
-					typ:          m.typ,
-					account:      m.account,
-					percent:      vat.Percent,
-				}
+			kz := Kennzahl{
+				withFraction: m.typ == Tax,
+				amount:       val,
+				typ:          m.typ,
+				account:      m.account,
+				percent:      vat.Percent,
 			}
+			kennzahlen.Merge(m.kz, kz)
+
 			debug("\t=> Kz %02d (Kto %d, %s):\t%s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
-			kennzahlen[m.kz] = kz
 		}
 	}
 
@@ -261,7 +267,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
 
 	if svz != 0 {
 		kz := Kennzahl{withFraction: true, amount: svz}
-		ustva.Kennzahlen[KzSvz] = kz
+		ustva.Kennzahlen.Merge(KzSvz, kz)
 		debug("\t\t=> Kz %02d:\t%s\t(= %s)", KzSvz, svz, kz.amountString())
 	}
 

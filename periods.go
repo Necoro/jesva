@@ -60,3 +60,21 @@ func (q Quarter) String() string {
 	// 4x = Qx
 	return fmt.Sprintf("4%d", q)
 }
+
+type Year uint16
+
+func (y Year) includes(d Date) bool {
+	return d.Year == int(y)
+}
+
+func (y Year) String() string {
+	return fmt.Sprintf("%d", y)
+}
+
+func parseYear(str string) Year {
+	year, err := strconv.ParseUint(str, 10, 16)
+	if err != nil {
+		log.Fatalf("Invalid year: %s (%v)", str, err)
+	}
+	return Year(year)
+}

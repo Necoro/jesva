@@ -110,6 +110,9 @@ cmdparsing:
 Possible options:
 	-d: Enable debug output
 	-svz amount: Take into account a Sondervorauszahlung.
+
+Additionally, there exists the year-end mode:
+> %[1]s [options] <jes.file> <year> <xml-file 1, xml-file 2, ..., xml-file n>
 `, os.Args[0])
 	}
 
@@ -139,13 +142,24 @@ Possible options:
 		}
 
 		period = Months{start, end}
-	} else { // single month
+	} else if len(periodStr) <= 2 { // single month
 		period = parseMonth(periodStr)
+	} else if len(periodStr) == 4 { // year
+		period = parseYear(periodStr)
+	} else {
+		log.Fatalf("Unknown period '%s'", periodStr)
 	}
 
 	conf := readConfig()
 	jes := readJesFile(jesFile)
 	jes.Validate()
 
-	BuildVatFile(conf, jes, period, svz)
+	if _, ok := period.(Year); ok {
+		// UStE
+		xmls := args[2:]
+		OutputUStE(jes, period, xmls, svz)
+	} else {
+		// UStVA
+		BuildVatFile(conf, jes, period, svz)
+	}
 }
