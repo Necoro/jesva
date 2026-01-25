@@ -56,11 +56,9 @@ type Accounts struct {
 }
 
 type Account struct {
-	Type       string `xml:"type,attr"`
-	TaxAccount bool   `xml:"taxaccount,attr"`
-	Rounding   string `xml:"rounding,attr"`
-	Number     int    `xml:"number"`
-	Percent    int    `xml:"percent"`
+	TaxAccount bool `xml:"taxaccount,attr"`
+	Number     int  `xml:"number"`
+	Percent    int  `xml:"percent"`
 }
 
 type TaxAccount uint16
