@@ -32,6 +32,13 @@ func (l UStELine) line() int {
 	return int(l)
 }
 
+func (l UStELine) field() int {
+	if l < 1000 {
+		return 0
+	}
+	return int(l % 100)
+}
+
 // UnmarshalXML implements xml.Unmarshaler.
 // It expects XML elements of the form <Kz123>45.67</Kz123> and stores the value in the Kennzahlen map.
 //
@@ -159,7 +166,10 @@ func OutputUStE(jes *Eur, period Period, xmls []string) {
 	}
 
 	lines := slices.SortedFunc(maps.Keys(byLine), func(line, line2 UStELine) int {
-		return cmp.Compare(line.line(), line2.line())
+		return cmp.Or(
+			cmp.Compare(line.line(), line2.line()),
+			cmp.Compare(line.field(), line2.field()),
+		)
 	})
 
 	for _, zeile := range lines {

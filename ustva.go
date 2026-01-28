@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -78,6 +79,12 @@ var mappings = []Mapping{
 	{61, 80, 250, Tax},
 	{61, 80, 255, Tax},
 	// TODO: Einfuhrumsatzsteuer
+}
+
+func init() {
+	slices.SortFunc(mappings, func(a, b Mapping) int {
+		return cmp.Or(cmp.Compare(a.kz, b.kz), cmp.Compare(a.account, b.account))
+	})
 }
 
 const (
@@ -200,7 +207,11 @@ func (k Kennzahlen) Merge(id int, kz Kennzahl) {
 
 func (k Kennzahlen) TaxSum() Cents {
 	var sum Cents
-	for id, kz := range k {
+
+	sortedKeys := slices.Sorted(maps.Keys(k))
+
+	for _, id := range sortedKeys {
+		kz := k[id]
 		amt := kz.taxAmount()
 		debug("* %d => %s", id, amt)
 
