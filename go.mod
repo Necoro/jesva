@@ -1,7 +1,5 @@
 module github.com/Necoro/jesva
 
-go 1.23
+go 1.24.0
 
-toolchain go1.23.4
-
-require golang.org/x/text v0.21.0
+require golang.org/x/text v0.33.0
