@@ -1,7 +1,6 @@
-package main
+package ust
 
 import (
-	"cmp"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -14,82 +13,10 @@ import (
 	"time"
 
 	"golang.org/x/text/encoding/charmap"
-)
 
-type SumType uint8
-
-const (
-	Ignore     SumType = iota
-	Amount             // tax is calculated based on the net amount
-	AmountOnly         // no tax calulation, explicitly use the net amount
-	Tax                // tax is exactly the paid taxes
-)
-
-func (s SumType) String() string {
-	switch s {
-	case Ignore:
-		return "Ign"
-	case Amount, AmountOnly:
-		return "Amt"
-	case Tax:
-		return "Tax"
-	default:
-		return "Unknown"
-	}
-}
-
-// Mapping of JES account types to Elster-Kennzahlen.
-// `typ` specifies whether we sum gross amounts or taxes.
-type Mapping struct {
-	kz      int
-	zeile   UStELine // UStE Zeile
-	account TaxAccount
-	typ     SumType
-}
-
-const (
-	// NA is used for accounts that are not mapped.
-	NA = 0
-)
-
-var mappings = []Mapping{
-	// Steuerpflichtige Umsätze 19%
-	{81, 22, 500, Amount},
-	// Steuerpflichtige Umsätze 7%
-	{83, 25, 510, Amount},
-	// Steuerpflichtige Umsätze 0%
-	// This is not reproduced in JES, as there is a difference between taxed with 0% and taxfree.
-	// Account 520 is used for taxfree, and is therefore not applicable here.
-	// USt 0% (Steuerfrei) --> Ignore
-	{NA, NA, 520, Ignore},
-	// VSt 19%
-	{66, 79, 100, Tax},
-	// VSt 7%
-	{66, 79, 110, Tax},
-	// Vst 0% --> Ignore
-	{NA, NA, 120, Ignore},
-	// §13b UStG USt
-	{46, 6501, 600, AmountOnly},
-	{47, 6502, 600, Tax},
-	// §13b UStG VSt
-	{67, 83, 200, Tax},
-	// Innergemeinschaftlicher Erwerb
-	{89, 51, 650, Amount},
-	{93, 52, 655, Amount},
-	{61, 80, 250, Tax},
-	{61, 80, 255, Tax},
-	// TODO: Einfuhrumsatzsteuer
-}
-
-func init() {
-	slices.SortFunc(mappings, func(a, b Mapping) int {
-		return cmp.Or(cmp.Compare(a.kz, b.kz), cmp.Compare(a.account, b.account))
-	})
-}
-
-const (
-	// Sondervorauszahlung
-	KzSvz = 39
+	"github.com/Necoro/jesva/pkg/config"
+	"github.com/Necoro/jesva/pkg/jes"
+	"github.com/Necoro/jesva/pkg/jesva"
 )
 
 // as defined by Elster
@@ -144,8 +71,8 @@ type UStVA struct {
 // Kennzahl is the content of one field on the UStVA form.
 type Kennzahl struct {
 	withFraction bool
-	amount       Cents
-	account      TaxAccount
+	amount       jesva.Cents
+	account      jes.TaxAccount
 	percent      int
 	typ          SumType
 }
@@ -164,7 +91,7 @@ func (k *Kennzahl) amountString() string {
 	}
 }
 
-func (k *Kennzahl) relevantAmount() Cents {
+func (k *Kennzahl) relevantAmount() jesva.Cents {
 	if k.withFraction {
 		return k.amount
 	} else {
@@ -172,7 +99,7 @@ func (k *Kennzahl) relevantAmount() Cents {
 	}
 }
 
-func (k *Kennzahl) taxAmount() Cents {
+func (k *Kennzahl) taxAmount() jesva.Cents {
 	switch k.typ {
 	case AmountOnly, Ignore:
 		return 0
@@ -205,15 +132,15 @@ func (k Kennzahlen) Merge(id int, kz Kennzahl) {
 	k[id].amount += kz.amount
 }
 
-func (k Kennzahlen) TaxSum() Cents {
-	var sum Cents
+func (k Kennzahlen) TaxSum() jesva.Cents {
+	var sum jesva.Cents
 
 	sortedKeys := slices.Sorted(maps.Keys(k))
 
 	for _, id := range sortedKeys {
 		kz := k[id]
 		amt := kz.taxAmount()
-		debug("* %d => %s", id, amt)
+		jesva.Debug("* %d => %s", id, amt)
 
 		if kz.account.IsExpense() {
 			amt = -amt
@@ -225,7 +152,7 @@ func (k Kennzahlen) TaxSum() Cents {
 }
 
 // kennzahlenFromVatData processes the JES receipts and calculates the Kennzahlen fields of the UStVA form.
-func kennzahlenFromVatData(vatData VatData) Kennzahlen {
+func kennzahlenFromVatData(vatData jes.VatData) Kennzahlen {
 	kennzahlen := make(Kennzahlen)
 
 	for _, m := range mappings {
@@ -239,7 +166,7 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 		}
 
 		if !vat.Empty() {
-			var val Cents
+			var val jesva.Cents
 			switch m.typ {
 			case Amount, AmountOnly:
 				val = vat.NetAmount
@@ -258,7 +185,7 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 			}
 			kennzahlen.Merge(m.kz, kz)
 
-			debug("\t=> Kz %02d (Kto %d, %s):\t%s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
+			jesva.Debug("\t=> Kz %02d (Kto %d, %s):\t%s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
 		}
 	}
 
@@ -266,7 +193,7 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 }
 
 // fillUStVA generates the content for the UStVA fields.
-func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
+func fillUStVA(conf *config.Config, jesData *jes.Eur, period jesva.Period, svz jesva.Cents) UStVA {
 	vatData := jesData.VatData(period)
 	ustva := UStVA{
 		Jahr:         jesData.Year(),
@@ -279,7 +206,7 @@ func fillUStVA(conf *Config, jesData *Eur, period Period, svz Cents) UStVA {
 	if svz != 0 {
 		kz := Kennzahl{withFraction: true, amount: svz, typ: Tax, account: 0}
 		ustva.Kennzahlen.Merge(KzSvz, kz)
-		debug("\t=> Kz %02d (SVZ):\t\t\t%s\t(= %s)", KzSvz, svz, kz.amountString())
+		jesva.Debug("\t=> Kz %02d (SVZ):\t\t\t%s\t(= %s)", KzSvz, svz, kz.amountString())
 	}
 
 	return ustva
@@ -322,7 +249,7 @@ func anmeldungForYear(year int) *Anmeldung {
 	return &anmeldung
 }
 
-func fillDatenlieferant(conf *Config, jesData *Eur) Datenlieferant {
+func fillDatenlieferant(conf *config.Config, jesData *jes.Eur) Datenlieferant {
 	name := jesData.Name
 
 	if conf.Name != "" && conf.FirstName != "" {
@@ -339,7 +266,7 @@ func fillDatenlieferant(conf *Config, jesData *Eur) Datenlieferant {
 	}
 }
 
-func fillUnternehmer(conf *Config, jesData *Eur) Unternehmer {
+func fillUnternehmer(conf *config.Config, jesData *jes.Eur) Unternehmer {
 	firstName, lastName, _ := strings.Cut(jesData.Name, " ")
 
 	if conf.FirstName != "" {
@@ -364,7 +291,7 @@ func fillUnternehmer(conf *Config, jesData *Eur) Unternehmer {
 }
 
 // WriteVatFile writes the UStVA XML to the given Writer.
-func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Cents) {
+func WriteVatFile(w io.Writer, conf *config.Config, jesData *jes.Eur, period jesva.Period, svz jesva.Cents) {
 	// ISO-8859-15 is requested
 	isoEncoder := charmap.ISO8859_15.NewEncoder()
 	w = isoEncoder.Writer(w)
@@ -394,6 +321,6 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Ce
 }
 
 // BuildVatFile prints the UStVA XML to Stdout.
-func BuildVatFile(conf *Config, jesData *Eur, period Period, svz Cents) {
+func BuildVatFile(conf *config.Config, jesData *jes.Eur, period jesva.Period, svz jesva.Cents) {
 	WriteVatFile(os.Stdout, conf, jesData, period, svz)
 }

@@ -1,4 +1,4 @@
-package main
+package ust
 
 import (
 	"bytes"
@@ -14,6 +14,9 @@ import (
 	"strings"
 
 	"golang.org/x/text/encoding/charmap"
+
+	"github.com/Necoro/jesva/pkg/jes"
+	"github.com/Necoro/jesva/pkg/jesva"
 )
 
 type UStELine uint16
@@ -60,7 +63,7 @@ func (k *Kennzahlen) UnmarshalXML(d *xml.Decoder, elem xml.StartElement) error {
 		return err
 	}
 
-	cents, err := ParseCents(data.Data)
+	cents, err := jesva.ParseCents(data.Data)
 	if err != nil {
 		return err
 	}
@@ -109,7 +112,7 @@ func readUStVAXml(xmlFile string) Kennzahlen {
 	return anmeldung.UStVA.Kennzahlen
 }
 
-func OutputUStE(jes *Eur, period Period, xmls []string) {
+func OutputUStE(jes *jes.Eur, period jesva.Period, xmls []string) {
 	ustvas := make([]Kennzahlen, len(xmls))
 	for i, xmlFile := range xmls {
 		ustvas[i] = readUStVAXml(xmlFile)
@@ -124,7 +127,7 @@ func OutputUStE(jes *Eur, period Period, xmls []string) {
 
 	for id, kz := range combinedKz {
 		acc := combinedKz[id].account
-		kz.percent = jes.accountInfo[acc].Percent
+		kz.percent = jes.AccountFor(acc).Percent
 	}
 
 	vatData := jes.VatData(period)
@@ -177,7 +180,7 @@ func OutputUStE(jes *Eur, period Period, xmls []string) {
 		printLine(line.fy, line.vz, zeile)
 	}
 
-	sumKz := func(amt Cents) *Kennzahl {
+	sumKz := func(amt jesva.Cents) *Kennzahl {
 		return &Kennzahl{typ: Tax, amount: amt, withFraction: true}
 	}
 

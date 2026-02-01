@@ -1,4 +1,4 @@
-package main
+package jes
 
 import (
 	"archive/zip"
@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/Necoro/jesva/pkg/jesva"
 )
 
 type Eur struct {
@@ -26,9 +28,21 @@ type Eur struct {
 }
 
 type Date struct {
-	Year  int `xml:"year,attr"`
-	Month int `xml:"month,attr"`
-	Day   int `xml:"day,attr"`
+	Y int `xml:"year,attr"`
+	M int `xml:"month,attr"`
+	D int `xml:"day,attr"`
+}
+
+func (d Date) Year() int {
+	return d.Y
+}
+
+func (d Date) Month() int {
+	return d.M
+}
+
+func (d Date) Day() int {
+	return d.D
 }
 
 type Receipt struct {
@@ -45,7 +59,7 @@ type Payment struct {
 	Amount   struct {
 		TaxHandling string `xml:"tax,attr"`
 		Value       string `xml:",chardata"`
-		value       Cents
+		value       jesva.Cents
 	} `xml:"amount"`
 	receipt *Receipt // link back
 }
@@ -75,8 +89,12 @@ func (t TaxAccount) IsIncome() bool {
 	return t >= minIncomeAccount
 }
 
+func (e *Eur) AccountFor(t TaxAccount) Account {
+	return e.accountInfo[t]
+}
+
 func (e *Eur) Year() int {
-	return e.Start.Year
+	return e.Start.Year()
 }
 
 // prepareAccountInfo consolidates the information on tax accounts into
@@ -106,7 +124,7 @@ func (p *Payment) isIncludingTax() bool {
 }
 
 // getValue returns the value of that Receipt in Cents.
-func (p *Payment) getValue() Cents {
+func (p *Payment) getValue() jesva.Cents {
 	if p.Amount.value != 0 {
 		return p.Amount.value
 	}
@@ -122,12 +140,12 @@ func (p *Payment) getValue() Cents {
 		log.Fatalf("Problem parsing amount '%s%s' as int: %v", left, right, err)
 	}
 
-	p.Amount.value = Cents(ival)
+	p.Amount.value = jesva.Cents(ival)
 	return p.Amount.value
 }
 
 // getNetAmount returns the net amount of this Payment, i.e. without taxes.
-func (p *Payment) getNetAmount(perc int) Cents {
+func (p *Payment) getNetAmount(perc int) jesva.Cents {
 	val := p.getValue()
 
 	if !p.isIncludingTax() || perc == 0 {
@@ -138,9 +156,9 @@ func (p *Payment) getNetAmount(perc int) Cents {
 }
 
 // getTax returns the taxes of this Payment.
-func (p *Payment) getTax(perc int) Cents {
+func (p *Payment) getTax(perc int) jesva.Cents {
 	if perc == 0 {
-		return Cents(0)
+		return jesva.Cents(0)
 	}
 
 	val := p.getValue()
@@ -153,10 +171,10 @@ func (p *Payment) getTax(perc int) Cents {
 	return val.Percentage(perc)
 }
 
-func (e *Eur) payments(period Period) iter.Seq[*Payment] {
+func (e *Eur) payments(period jesva.Period) iter.Seq[*Payment] {
 	return func(yield func(*Payment) bool) {
 		for _, r := range e.Receipts {
-			if r.Paid && period.includes(r.Date) {
+			if r.Paid && period.Includes(r.Date) {
 				for _, p := range r.Payments {
 					// tax bookings are not relevant to taxes itself, so we ignore them
 					_, isTaxBookingAccount := e.taxBookingAccounts[p.Account]
@@ -172,8 +190,8 @@ func (e *Eur) payments(period Period) iter.Seq[*Payment] {
 }
 
 type VatDataEntry struct {
-	Tax       Cents
-	NetAmount Cents
+	Tax       jesva.Cents
+	NetAmount jesva.Cents
 	Percent   int
 }
 
@@ -184,7 +202,7 @@ func (v VatDataEntry) Empty() bool {
 type VatData map[TaxAccount]VatDataEntry
 
 // VatData returns amount and vat amount for each account in the given period.
-func (e *Eur) VatData(period Period) VatData {
+func (e *Eur) VatData(period jesva.Period) VatData {
 	vatData := make(VatData, len(e.accountInfo))
 
 	type paymentWithAccount struct {
@@ -197,7 +215,7 @@ func (e *Eur) VatData(period Period) VatData {
 		taxDiff := p.getTax(acc.Percent)
 		amountDiff := p.getNetAmount(acc.Percent)
 
-		debug("Kto %02d/%02d (#%d):\t%s / %s", p.acc, p.Account, p.receipt.Number,
+		jesva.Debug("Kto %02d/%02d (#%d):\t%s / %s", p.acc, p.Account, p.receipt.Number,
 			amountDiff.Format("%3d.%02d EUR"),
 			taxDiff.Format("%3d.%02d EUR"))
 
@@ -231,23 +249,23 @@ func (e *Eur) VatData(period Period) VatData {
 	return vatData
 }
 
-func (e *Eur) Validate() {
-	if e.Start.Year != e.End.Year {
+func (e *Eur) Validate(knownAccounts []TaxAccount) {
+	if e.Start.Year() != e.End.Year() {
 		log.Fatalf("JES spans multiple years. This is not supported.")
 	}
 
-	// Check for unsupported tax accounts
-	knownAccounts := make(map[TaxAccount]struct{})
-	for _, m := range mappings {
-		knownAccounts[m.account] = struct{}{}
+	accounts := make(map[TaxAccount]struct{})
+	for _, acc := range knownAccounts {
+		accounts[acc] = struct{}{}
 	}
 
+	// Check for unsupported tax accounts
 	checkFn := func(acc TaxAccount) {
 		if acc == 0 { // account not given
 			return
 		}
 
-		if _, ok := knownAccounts[acc]; !ok {
+		if _, ok := accounts[acc]; !ok {
 			log.Fatalf("Unsupported tax account '%d'", acc)
 		}
 	}
@@ -261,7 +279,7 @@ func (e *Eur) Validate() {
 	}
 }
 
-func readJesFile(jesFile string) *Eur {
+func Read(jesFile string) *Eur {
 	// JES stores the file as a ZIP archive
 	zipF, err := zip.OpenReader(jesFile)
 	if err != nil {
