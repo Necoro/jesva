@@ -3,3 +3,9 @@
 .idea
 config.json
 test.xml
+eric.log
+eric/ERiC-*
+
+# must not be committed
+eric/include
+eric/lib
