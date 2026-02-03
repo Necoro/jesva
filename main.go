@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"strings"
 
 	"github.com/Necoro/jesva/pkg/config"
 	"github.com/Necoro/jesva/pkg/jes"
@@ -57,19 +56,11 @@ Additionally, there exists the year-end mode:
 	}
 
 	jesFile := args[0]
-	periodStr := args[1]
 
 	var period jesva.Period
-	if periodStr[0] == 'q' || periodStr[0] == 'Q' { // Quarter
-		period = jesva.ParseQuarter(periodStr)
-	} else if startStr, endStr, found := strings.Cut(periodStr, "-"); found { // Month range
-		period = jesva.ParseMonths(startStr, endStr)
-	} else if len(periodStr) <= 2 { // single month
-		period = jesva.ParseMonth(periodStr)
-	} else if len(periodStr) == 4 { // year
-		period = jesva.ParseYear(periodStr)
-	} else {
-		log.Fatalf("Unknown period '%s'", periodStr)
+	var err error
+	if period, err = jesva.Parse(args[1]); err != nil {
+		log.Fatalf("Parsing period: %v", err)
 	}
 
 	conf := config.Read()
