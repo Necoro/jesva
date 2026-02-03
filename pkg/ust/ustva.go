@@ -20,7 +20,10 @@ import (
 )
 
 // as defined by Elster
-const header = `<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>` + "\n"
+const (
+	header     = `<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>` + "\n"
+	headerUTF8 = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>` + "\n"
+)
 
 // Anmeldung is the final XML structure requested by Elster.
 type Anmeldung struct {
@@ -291,10 +294,12 @@ func fillUnternehmer(conf *config.Config, jesData *jes.Eur) Unternehmer {
 }
 
 // WriteVatFile writes the UStVA XML to the given Writer.
-func WriteVatFile(w io.Writer, conf *config.Config, jesData *jes.Eur, period jesva.Period, svz jesva.Cents) {
-	// ISO-8859-15 is requested
-	isoEncoder := charmap.ISO8859_15.NewEncoder()
-	w = isoEncoder.Writer(w)
+func WriteVatFile(w io.Writer, utf8 bool, conf *config.Config, jesData *jes.Eur, period jesva.Period, svz jesva.Cents) {
+	if !utf8 {
+		// ISO-8859-15 is requested
+		isoEncoder := charmap.ISO8859_15.NewEncoder()
+		w = isoEncoder.Writer(w)
+	}
 
 	// fill data
 	a := anmeldungForYear(jesData.Year())
@@ -303,8 +308,14 @@ func WriteVatFile(w io.Writer, conf *config.Config, jesData *jes.Eur, period jes
 	a.UStVA = fillUStVA(conf, jesData, period, svz)
 
 	// write the header
-	if _, err := io.WriteString(w, header); err != nil {
-		log.Fatalf("Writing XML: %v", err)
+	if utf8 {
+		if _, err := io.WriteString(w, headerUTF8); err != nil {
+			log.Fatalf("Writing XML: %v", err)
+		}
+	} else {
+		if _, err := io.WriteString(w, header); err != nil {
+			log.Fatalf("Writing XML: %v", err)
+		}
 	}
 
 	// encode to XML
@@ -322,5 +333,5 @@ func WriteVatFile(w io.Writer, conf *config.Config, jesData *jes.Eur, period jes
 
 // BuildVatFile prints the UStVA XML to Stdout.
 func BuildVatFile(conf *config.Config, jesData *jes.Eur, period jesva.Period, svz jesva.Cents) {
-	WriteVatFile(os.Stdout, conf, jesData, period, svz)
+	WriteVatFile(os.Stdout, false, conf, jesData, period, svz)
 }

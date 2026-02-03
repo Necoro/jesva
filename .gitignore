@@ -9,3 +9,4 @@ eric/ERiC-*
 # must not be committed
 eric/include
 eric/lib
+.env

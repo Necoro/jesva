@@ -3,6 +3,7 @@
 package eric
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -108,11 +109,11 @@ func (e *Eric) CheckSteuerNr(steuerNr string) error {
 	nr := C.CString(steuerNr)
 	defer C.free(unsafe.Pointer(nr))
 
-	status := int(C.EricPruefeSteuernummer(nr))
+	status := C.EricPruefeSteuernummer(nr)
 	if status == C.ERIC_GLOBAL_STEUERNUMMER_UNGUELTIG {
 		return fmt.Errorf("Steuer-Nr. '%s' ungültig", steuerNr)
 	} else if status != C.ERIC_OK {
-		log.Panicf("Unexpected status %d", status)
+		log.Panicf("Unexpected status %d", int(status))
 	}
 
 	return nil
@@ -122,11 +123,28 @@ func (e *Eric) CheckWID(wid string) error {
 	widC := C.CString(wid)
 	defer C.free(unsafe.Pointer(widC))
 
-	status := int(C.EricPruefeWIdNr(widC))
+	status := C.EricPruefeWIdNr(widC)
 	if status == C.ERIC_GLOBAL_IDNUMMER_UNGUELTIG {
 		return fmt.Errorf("W-ID-Nr '%s' ungültig", wid)
 	} else if status != C.ERIC_OK {
-		log.Panicf("Unexpected status %d", status)
+		log.Panicf("Unexpected status %d", int(status))
+	}
+
+	return nil
+}
+
+func (e *Eric) CheckXML(xml string, datenart *Datenart) error {
+	xmlC := C.CString(xml)
+	defer C.free(unsafe.Pointer(xmlC))
+
+	status := C.EricCheckXML(xmlC, datenart.string, e.buf.handle)
+
+	if status == C.ERIC_IO_READER_SCHEMA_VALIDIERUNGSFEHLER || status == C.ERIC_IO_PARSE_FEHLER {
+		return errors.New(e.buf.content())
+	}
+
+	if status != C.ERIC_OK {
+		log.Panicf("Unexpected status %d", int(status))
 	}
 
 	return nil
