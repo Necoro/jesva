@@ -2,8 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
-	"io/fs"
 	"log"
 	"os"
 )
@@ -33,31 +31,39 @@ type Config struct {
 	}
 }
 
-// Read loads the configuration from the location specified in `configName`
-func Read() *Config {
-	name := configName
-
-	f, err := os.Open(name)
-	if errors.Is(err, fs.ErrNotExist) {
-		name = configAltName
-		f, err = os.Open(name)
-
-		if errors.Is(err, fs.ErrNotExist) {
-			log.Fatalf("No config file ('%s' or '%s') found.", configName, configAltName)
-		}
-	}
-
+// ReadFrom loads the configuration from the path passed in
+func ReadFrom(path string) *Config {
+	f, err := os.Open(path)
 	if err != nil {
-		log.Fatalf("Reading config at '%s': %v", name, err)
+		log.Fatalf("Reading config at '%s': %v", path, err)
 	}
+
+	defer f.Close()
 
 	config := new(Config)
 	d := json.NewDecoder(f)
 	d.DisallowUnknownFields()
 
 	if err = d.Decode(config); err != nil {
-		log.Fatalf("Parsing config at '%s': %v", name, err)
+		log.Fatalf("Parsing config at '%s': %v", path, err)
 	}
 
 	return config
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil || !os.IsNotExist(err)
+}
+
+// Read loads the configuration from the location specified in `configName`
+func Read() *Config {
+	if exists(configName) {
+		return ReadFrom(configName)
+	}
+	if exists(configAltName) {
+		return ReadFrom(configAltName)
+	}
+	log.Fatalf("No config file ('%s' or '%s') found.", configName, configAltName)
+	return nil
 }
