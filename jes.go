@@ -32,10 +32,11 @@ type Date struct {
 }
 
 type Receipt struct {
-	Number   int        `xml:"number"`
-	Date     Date       `xml:"date"`
-	Paid     bool       `xml:"paid,attr"`
-	Payments []*Payment `xml:"payment"`
+	Number           int        `xml:"number"`
+	Date             Date       `xml:"date"`
+	Paid             bool       `xml:"paid,attr"`
+	Payments         []*Payment `xml:"payment"`
+	DepreciationDate *Date      `xml:"depreciationplan>date"`
 }
 
 type Payment struct {
@@ -157,6 +158,10 @@ func (e *Eur) payments(period Period) iter.Seq[*Payment] {
 	return func(yield func(*Payment) bool) {
 		for _, r := range e.Receipts {
 			if r.Paid && period.includes(r.Date) {
+				if r.DepreciationDate != nil && r.DepreciationDate.Year != e.Year() {
+					// receipt is a depreciation starting in another year
+					continue
+				}
 				for _, p := range r.Payments {
 					// tax bookings are not relevant to taxes itself, so we ignore them
 					_, isTaxBookingAccount := e.taxBookingAccounts[p.Account]
