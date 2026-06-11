@@ -47,6 +47,7 @@ type Payment struct {
 		TaxHandling string `xml:"tax,attr"`
 		Value       string `xml:",chardata"`
 		value       Cents
+		parsed      bool
 	} `xml:"amount"`
 	receipt *Receipt // link back
 }
@@ -108,7 +109,7 @@ func (p *Payment) isIncludingTax() bool {
 
 // getValue returns the value of that Receipt in Cents.
 func (p *Payment) getValue() Cents {
-	if p.Amount.value != 0 {
+	if p.Amount.parsed {
 		return p.Amount.value
 	}
 
@@ -124,6 +125,7 @@ func (p *Payment) getValue() Cents {
 	}
 
 	p.Amount.value = Cents(ival)
+	p.Amount.parsed = true
 	return p.Amount.value
 }
 
