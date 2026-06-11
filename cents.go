@@ -10,17 +10,14 @@ import (
 type Cents int64
 
 func (c Cents) Format(fmtStr string) string {
-	eur, cts := c.AsEuro()
-	return fmt.Sprintf(fmtStr, eur, cts)
-}
-
-func (c Cents) AsEuro() (int64, int64) {
-	// no abs for int :(
-	cents := c.Cents()
-	if cents < 0 {
-		cents = -cents
+	cInt := int64(c)
+	prefix := ""
+	if cInt < 0 {
+		prefix = "-"
+		cInt = -cInt
 	}
-	return int64(c) / 100, int64(cents)
+
+	return prefix + fmt.Sprintf(fmtStr, cInt/100, cInt%100)
 }
 
 func (c Cents) Cents() Cents {
@@ -33,6 +30,11 @@ func (c Cents) FullEuros() Cents {
 
 func (c Cents) String() string {
 	return c.Format("%d.%02d EUR")
+}
+
+// EuroString formats the amount in full euros.
+func (c Cents) EuroString() string {
+	return strconv.FormatInt(int64(c)/100, 10)
 }
 
 // NetAmount returns the net amount under the given percentage.
@@ -69,10 +71,14 @@ func parseCents(eurStr, centsStr string) (Cents, error) {
 		}
 	}
 
+	if eur < 0 || (eur == 0 && eurStr[0] == '-') {
+		cents = -cents
+	}
 	return Cents(eur*100 + cents), nil
 }
 
 func ParseCents(str string) (Cents, error) {
+	str = strings.TrimSpace(str)
 	if eurStr, centsStr, found := strings.Cut(str, "."); found && len(centsStr) == 2 {
 		return parseCents(eurStr, centsStr)
 	}

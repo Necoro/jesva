@@ -155,13 +155,10 @@ type Kennzahl struct {
 type Kennzahlen map[int]*Kennzahl
 
 func (k *Kennzahl) amountString() string {
-	euro, cents := k.amount.AsEuro()
-
 	if k.withFraction {
-		return fmt.Sprintf("%d.%02d", euro, cents)
-	} else {
-		return fmt.Sprintf("%d", euro)
+		return k.amount.Format("%d.%02d")
 	}
+	return k.amount.EuroString()
 }
 
 func (k *Kennzahl) relevantAmount() Cents {
