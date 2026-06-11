@@ -52,6 +52,8 @@ func readConfig() *Config {
 		log.Fatalf("Reading config at '%s': %v", name, err)
 	}
 
+	defer f.Close()
+
 	config := new(Config)
 	d := json.NewDecoder(f)
 	d.DisallowUnknownFields()
