@@ -191,14 +191,14 @@ func printLine(fullYear *Kennzahl, vz *Kennzahl, zeile UStELine) {
 		delta = fullYear.relevantAmount() - vz.relevantAmount()
 	}
 
-	fmt.Printf(" %s\t=>\t%s", zeile, fullYear.relevantAmount().Format("%5d,%02d EUR"))
+	fmt.Printf(" %s\t=> %14s", zeile, fullYear.relevantAmount().Format(',', true))
 
 	if fullYear.typ == Amount {
-		fmt.Printf("\t(%s", fullYear.taxAmount().Format("%5d,%02d EUR"))
+		fmt.Printf("\t(%12s", fullYear.taxAmount().Format(',', true))
 	}
 
 	if delta != 0 {
-		fmt.Printf("\tΔ %s", delta.Format("%d,%02d EUR"))
+		fmt.Printf("\tΔ %s", delta.Format(',', true))
 	}
 
 	if fullYear.typ == Amount {

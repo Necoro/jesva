@@ -9,7 +9,7 @@ import (
 
 type Cents int64
 
-func (c Cents) Format(fmtStr string) string {
+func (c Cents) Format(delim rune, eur bool) string {
 	cInt := int64(c)
 	prefix := ""
 	if cInt < 0 {
@@ -17,7 +17,12 @@ func (c Cents) Format(fmtStr string) string {
 		cInt = -cInt
 	}
 
-	return prefix + fmt.Sprintf(fmtStr, cInt/100, cInt%100)
+	suffix := ""
+	if eur {
+		suffix = " EUR"
+	}
+
+	return fmt.Sprintf("%s%d%c%02d%s", prefix, cInt/100, delim, cInt%100, suffix)
 }
 
 func (c Cents) Cents() Cents {
@@ -29,7 +34,7 @@ func (c Cents) FullEuros() Cents {
 }
 
 func (c Cents) String() string {
-	return c.Format("%d.%02d EUR")
+	return c.Format('.', true)
 }
 
 // EuroString formats the amount in full euros.

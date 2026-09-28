@@ -156,7 +156,7 @@ type Kennzahlen map[int]*Kennzahl
 
 func (k *Kennzahl) amountString() string {
 	if k.withFraction {
-		return k.amount.Format("%d.%02d")
+		return k.amount.Format('.', false)
 	}
 	return k.amount.EuroString()
 }
@@ -255,7 +255,7 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 			}
 			kennzahlen.Merge(m.kz, kz)
 
-			debug("\t=> Kz %02d (Kto %d, %s):\t%s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
+			debug("=> Kz %02d (Kto %d, %s): %13s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
 		}
 	}
 
@@ -385,6 +385,7 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Ce
 	if err := xmlEncoder.Encode(a); err != nil {
 		log.Fatalf("Error encoding XML: %v", err)
 	}
+	io.WriteString(w, "\n")
 
 	taxSum := a.UStVA.Kennzahlen.TaxSum()
 	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s ***\n", taxSum)

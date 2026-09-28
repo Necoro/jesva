@@ -204,9 +204,9 @@ func (e *Eur) VatData(period Period) VatData {
 		taxDiff := p.getTax(acc.Percent)
 		amountDiff := p.getNetAmount(acc.Percent)
 
-		debug("Kto %02d/%02d (#%d):\t%s / %s", p.acc, p.Account, p.receipt.Number,
-			amountDiff.Format("%3d.%02d EUR"),
-			taxDiff.Format("%3d.%02d EUR"))
+		debug("Kto %02d/%02d (#%d): %13s / %11s", p.acc, p.Account, p.receipt.Number,
+			amountDiff.Format('.', true),
+			taxDiff.Format('.', true))
 
 		vd := vatData[p.acc]
 		vd.Tax += taxDiff
