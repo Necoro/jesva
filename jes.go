@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"cmp"
 	"encoding/xml"
+	"fmt"
 	"iter"
 	"log"
 	"slices"
@@ -199,12 +200,17 @@ func (e *Eur) VatData(period Period) VatData {
 		acc TaxAccount
 	}
 
+	dbg := debugTable()
+	defer dbg.Flush()
+
+	fmt.Fprint(dbg, "Kto\tBeleg\tNetto\tSteuer\t\n")
+
 	perAccount := func(p paymentWithAccount) {
 		acc := e.accountInfo[p.acc]
 		taxDiff := p.getTax(acc.Percent)
 		amountDiff := p.getNetAmount(acc.Percent)
 
-		debug("Kto %02d/%02d (#%d): %13s / %11s", p.acc, p.Account, p.receipt.Number,
+		fmt.Fprintf(dbg, "%02d/%02d\t#%d\t%s\t%s\t\n", p.acc, p.Account, p.receipt.Number,
 			amountDiff.Format('.', true),
 			taxDiff.Format('.', true))
 
@@ -234,6 +240,7 @@ func (e *Eur) VatData(period Period) VatData {
 	for _, p := range payments {
 		perAccount(p)
 	}
+	fmt.Fprintln(dbg) // separate from the following debug output
 
 	return vatData
 }

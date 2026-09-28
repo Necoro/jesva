@@ -22,7 +22,7 @@ func (l UStELine) String() string {
 	if l > 1000 {
 		return fmt.Sprintf("%02d/%02d", l/100, l%100)
 	}
-	return fmt.Sprintf("%02d   ", l) // three trailing spaces to accomodate for the optional fields
+	return fmt.Sprintf("%02d", l)
 }
 
 func (l UStELine) line() int {
@@ -172,38 +172,47 @@ func OutputUStE(jes *Eur, period Period, xmls []string) {
 		)
 	})
 
+	t := newTable(os.Stdout)
+	defer t.Flush()
+
+	fmt.Fprint(t, "Zeile\t\tBetrag\tSteuer\tΔ\t\n")
+
 	for _, zeile := range lines {
 		line := byLine[zeile]
-		printLine(line.fy, line.vz, zeile)
+		printLine(t, line.fy, line.vz, zeile)
 	}
 
 	sumKz := func(amt Cents) *Kennzahl {
 		return &Kennzahl{typ: Tax, amount: amt, withFraction: true}
 	}
 
-	printLine(sumKz(vzSum), sumKz(fySum), 119)
+	printLine(t, sumKz(vzSum), sumKz(fySum), 119)
 }
 
-func printLine(fullYear *Kennzahl, vz *Kennzahl, zeile UStELine) {
+// printLine writes one UStE line as a table row: line, amount, tax (informational, only for Amount), delta.
+// Parentheses mark tax figures in lines where the amount is entered.
+func printLine(w io.Writer, fullYear *Kennzahl, vz *Kennzahl, zeile UStELine) {
 	delta := fullYear.taxAmount() - vz.taxAmount()
 
 	if fullYear.typ == AmountOnly {
 		delta = fullYear.relevantAmount() - vz.relevantAmount()
 	}
 
-	fmt.Printf(" %s\t=> %14s", zeile, fullYear.relevantAmount().Format(',', true))
+	amountStr := fullYear.relevantAmount().Format(',', true)
 
+	var taxStr, deltaStr string
 	if fullYear.typ == Amount {
-		fmt.Printf("\t(%12s", fullYear.taxAmount().Format(',', true))
+		taxStr = "(" + fullYear.taxAmount().Format(',', true) + ")"
 	}
 
 	if delta != 0 {
-		fmt.Printf("\tΔ %s", delta.Format(',', true))
+		deltaStr = delta.Format(',', true)
+		if fullYear.typ == Amount {
+			deltaStr = "(" + deltaStr + ")"
+		} else {
+			deltaStr += " " // trailing space aligns with the closing parenthesis
+		}
 	}
 
-	if fullYear.typ == Amount {
-		fmt.Print(")")
-	}
-
-	fmt.Println()
+	fmt.Fprintf(w, "%s\t=>\t%s\t%s\t%s\t\n", zeile, amountStr, taxStr, deltaStr)
 }

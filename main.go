@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"os"
 	"strings"
+	"text/tabwriter"
 )
 
 const (
@@ -71,6 +73,20 @@ func debug(format string, args ...any) {
 	if _debug {
 		log.Printf(format, args...)
 	}
+}
+
+// newTable returns a writer aligning tab-terminated cells, all right-aligned.
+// Flush must be called after the last row.
+func newTable(w io.Writer) *tabwriter.Writer {
+	return tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+}
+
+// debugTable returns a table writing to the log output if debugging is enabled, else discarding.
+func debugTable() *tabwriter.Writer {
+	if _debug {
+		return newTable(log.Writer())
+	}
+	return newTable(io.Discard)
 }
 
 func main() {

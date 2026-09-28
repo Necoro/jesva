@@ -207,10 +207,15 @@ func (k Kennzahlen) TaxSum() Cents {
 
 	sortedKeys := slices.Sorted(maps.Keys(k))
 
+	dbg := debugTable()
+	defer dbg.Flush()
+
+	fmt.Fprint(dbg, "Kz\tSteuer\t\n")
+
 	for _, id := range sortedKeys {
 		kz := k[id]
 		amt := kz.taxAmount()
-		debug("* %d => %s", id, amt)
+		fmt.Fprintf(dbg, "%02d\t%s\t\n", id, amt)
 
 		if kz.account.IsExpense() {
 			amt = -amt
@@ -218,12 +223,19 @@ func (k Kennzahlen) TaxSum() Cents {
 
 		sum += amt
 	}
+	fmt.Fprintln(dbg) // separate from the following debug output
+
 	return sum
 }
 
 // kennzahlenFromVatData processes the JES receipts and calculates the Kennzahlen fields of the UStVA form.
 func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 	kennzahlen := make(Kennzahlen)
+
+	dbg := debugTable()
+	defer dbg.Flush()
+
+	fmt.Fprint(dbg, "Kz\tKto\tTyp\tBetrag\tFeld\t\n")
 
 	for _, m := range mappings {
 		if m.typ == Ignore {
@@ -255,9 +267,10 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 			}
 			kennzahlen.Merge(m.kz, kz)
 
-			debug("=> Kz %02d (Kto %d, %s): %13s\t(= %s)", m.kz, m.account, m.typ, val, kz.amountString())
+			fmt.Fprintf(dbg, "%02d\t%d\t%s\t%s\t(= %s)\t\n", m.kz, m.account, m.typ, val, kz.amountString())
 		}
 	}
+	fmt.Fprintln(dbg) // separate from the following debug output
 
 	return kennzahlen
 }
