@@ -235,7 +235,7 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 	dbg := debugTable()
 	defer dbg.Flush()
 
-	fmt.Fprint(dbg, "Kz\tKto\tTyp\tBetrag\tFeld\t\n")
+	fmt.Fprint(dbg, "Kz\tKto\tTyp\tBetrag\t\n")
 
 	for _, m := range mappings {
 		if m.typ == Ignore {
@@ -267,7 +267,7 @@ func kennzahlenFromVatData(vatData VatData) Kennzahlen {
 			}
 			kennzahlen.Merge(m.kz, kz)
 
-			fmt.Fprintf(dbg, "%02d\t%d\t%s\t%s\t(= %s)\t\n", m.kz, m.account, m.typ, val, kz.amountString())
+			fmt.Fprintf(dbg, "%02d\t%d\t%s\t%s\t (= %s)\n", m.kz, m.account, m.typ, val, kz.amountString())
 		}
 	}
 	fmt.Fprintln(dbg) // separate from the following debug output
@@ -398,7 +398,9 @@ func WriteVatFile(w io.Writer, conf *Config, jesData *Eur, period Period, svz Ce
 	if err := xmlEncoder.Encode(a); err != nil {
 		log.Fatalf("Error encoding XML: %v", err)
 	}
-	io.WriteString(w, "\n")
+	if _, err := io.WriteString(w, "\n"); err != nil {
+		log.Fatalf("Writing XML: %v", err)
+	}
 
 	taxSum := a.UStVA.Kennzahlen.TaxSum()
 	fmt.Fprintf(os.Stderr, "*** Expected Tax Sum: %s ***\n", taxSum)
